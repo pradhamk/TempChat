@@ -18,7 +18,7 @@ module.exports = {
             background: "#1c1c1c",
             primary: {
               DEFAULT: "#5900c5"
-            }
+            },
           }
         }
       }
