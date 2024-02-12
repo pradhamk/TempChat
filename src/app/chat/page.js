@@ -7,12 +7,27 @@ import { IoMdSend } from "react-icons/io";
 import { useState } from "react";
 import { IoMdClose } from "react-icons/io";
 import ChatBubble from "@/components/ChatBubble";
+import { listen } from "@tauri-apps/api/event";
+import { useEffect } from "react";
 
 export default function ChatRoom() {
     const search = useSearchParams()
     const room_url = search.get('roomURL')
 
     const [message, setMessage] = useState("")
+    const [messages, setMessages] = useState([])
+
+    useEffect(() => {
+        if(!window) { return }
+        const unlisten = listen('new-message', (e) => {
+            const content = e.payload
+            setMessages((prev) => [...prev, content])
+        })
+
+        return () => {
+            unlisten.then(f => f())
+        }
+    }, [])
 
     return (
         <main className="w-full flex flex-col items-center">
@@ -35,18 +50,11 @@ export default function ChatRoom() {
             
             <Divider className="w-[80vw]"/>
             <div className="w-[80vw] max-h-[80vh] pb-20 mt-3 overflow-scroll no-scrollbar">
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
-                <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
+                {
+                    messages.map((val, i) => (
+                        <ChatBubble time={new Date().toLocaleTimeString()} author={"user"} content={val} self={false} key={i}/>
+                    ))
+                }
             </div>
             <div className="flex items-center absolute bottom-0 pb-10 bg-background">
                 <Textarea

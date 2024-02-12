@@ -12,7 +12,7 @@ use nanoid::nanoid;
 use tauri::command;
 
 #[command]
-async fn create_chat(username: String, user_limit: u8) -> Result<String, String> {
+async fn create_chat(username: String, user_limit: u8, window: tauri::Window) -> Result<String, String> {
     let port = rand::thread_rng().gen_range(10_000..=20_000);
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&addr)
@@ -45,21 +45,21 @@ async fn create_chat(username: String, user_limit: u8) -> Result<String, String>
     tokio::spawn(async move {
         loop {
             if let Ok((stream, addr)) = listener.accept().await {
-                tokio::spawn(handle_connection(stream, addr));
+                tokio::spawn(handle_connection(stream, addr, window.clone()));
             }
         }
     });
 
-    Ok(format!("http://127.0.0.1:{}", port))
+    Ok(format!("http://127.0.0.1:{}", port)) //For testing purposes
 }
 
-async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
+async fn handle_connection(stream: TcpStream, addr: SocketAddr, window: tauri::Window) {
     println!("New client connected: {:#?}", addr);
     if let Ok(ws_stream) = tokio_tungstenite::accept_async(stream).await {
         let (mut write, mut read) = ws_stream.split();
         while let Some(msg) = read.next().await {
             if let Ok(content) = msg {
-                println!("{}", content);
+                window.emit("new-message", content.to_string()).expect("Couldn't emit message");
                 if let Err(e) = write.send(content).await {
                     println!("Couldn't send message: {}", e);
                     break;
