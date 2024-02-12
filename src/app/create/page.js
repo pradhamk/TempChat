@@ -6,6 +6,7 @@ import { generateUsername } from "unique-username-generator";
 import { TfiReload } from "react-icons/tfi";
 import { invoke } from "@tauri-apps/api/tauri";
 import BackArrow from "@/components/BackArrow";
+import Router from "next/router";
 
 export default function CreateChat() {
     const [randomName, setRandomName] = useState("");
@@ -47,9 +48,9 @@ export default function CreateChat() {
 
     const handleSubmit = () => {
         setLoading(true)
-        invoke('create_chat', { username: username, userLimit: limit }).then(() => {
-            console.log("submitted");
-            setLoading(false)
+        invoke('create_chat', { username: username, userLimit: limit }).then((url) => {
+            setLoading(false);
+            window.location.href = `/chat?roomURL=${url}`
         }).catch((err) => {
             setError(err)
             setModalError(true)

@@ -26,7 +26,6 @@ async fn create_chat(username: String, user_limit: u8) -> Result<String, String>
         'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
     ];
     let chat_id = nanoid!(16, &alphabet);
-    println!("{}", chat_id);
     let config = ClientConfig {
         server: Some("https://loca.lt".into()),
         subdomain: Some(chat_id),
@@ -37,11 +36,12 @@ async fn create_chat(username: String, user_limit: u8) -> Result<String, String>
         credential: None,
     };
 
+    /*
     let url = open_tunnel(config)
         .await
         .map_err(|e| format!("Unable to open up tunnel: {}", e))?;
     println!("Tunnel located at {}", url);
-
+    */
     tokio::spawn(async move {
         loop {
             if let Ok((stream, addr)) = listener.accept().await {
@@ -50,7 +50,7 @@ async fn create_chat(username: String, user_limit: u8) -> Result<String, String>
         }
     });
 
-    Ok(url)
+    Ok(format!("http://127.0.0.1:{}", port))
 }
 
 async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
