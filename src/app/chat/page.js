@@ -34,7 +34,7 @@ export default function ChatRoom() {
             </div>
             
             <Divider className="w-[80vw]"/>
-            <div className="w-[80vw] max-h-[80vh] mt-3 overflow-scroll no-scrollbar">
+            <div className="w-[80vw] max-h-[80vh] pb-20 mt-3 overflow-scroll no-scrollbar">
                 <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
                 <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
                 <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
@@ -48,7 +48,7 @@ export default function ChatRoom() {
                 <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={false}/>
                 <ChatBubble time={"11:35"} author={"user"} content={"test message"} self={true}/>
             </div>
-            <div className="flex items-center absolute bottom-10">
+            <div className="flex items-center absolute bottom-0 pb-10 bg-background">
                 <Textarea
                     placeholder="Send your message"
                     maxLength={1000}
