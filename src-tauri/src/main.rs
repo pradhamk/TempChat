@@ -1,18 +1,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, collections::HashMap};
 use rand::Rng;
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::broadcast,
-};
-use futures_util::{SinkExt, StreamExt, TryStreamExt};
+use tokio::{net::{TcpListener, TcpStream}, sync::broadcast};
+use futures_util::{stream::SplitSink, SinkExt, StreamExt, TryStreamExt, lock::Mutex};
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
-use tauri::command;
+use tauri::{command, Window};
+use once_cell::sync::Lazy;
+use tokio_tungstenite::{WebSocketStream, tungstenite::Message::Text};
+
+static PEER_MAP: Lazy<Mutex<HashMap<String, SplitSink<WebSocketStream<tokio::net::TcpStream>, tokio_tungstenite::tungstenite::Message>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+struct Message {
+    command: String,
+    sender_id: String,
+    content: String,
+}
 
 #[command]
-async fn create_chat(username: String, user_limit: u8, window: tauri::Window) -> Result<String, String> {
+async fn create_chat(username: String, user_limit: u8, window: Window) -> Result<String, String> {
     let port = rand::thread_rng().gen_range(10_000..=20_000);
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&addr)
@@ -36,34 +44,53 @@ async fn create_chat(username: String, user_limit: u8, window: tauri::Window) ->
         credential: None,
     };
 
-    /*
-    let url = open_tunnel(config)
-        .await
-        .map_err(|e| format!("Unable to open up tunnel: {}", e))?;
-    println!("Tunnel located at {}", url);
-    */
     tokio::spawn(async move {
         loop {
-            if let Ok((stream, addr)) = listener.accept().await {
-                tokio::spawn(handle_connection(stream, addr, window.clone()));
+            if let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(handle_connection(stream, window.clone()));
             }
         }
     });
 
-    Ok(format!("http://127.0.0.1:{}", port)) //For testing purposes
+    Ok(format!("http://127.0.0.1:{}", port)) // For testing purposes
 }
 
-async fn handle_connection(stream: TcpStream, addr: SocketAddr, window: tauri::Window) {
-    println!("New client connected: {:#?}", addr);
+async fn handle_connection(stream: TcpStream, window: Window) {
+    println!("New client connected: {:#?}", stream.peer_addr());
     if let Ok(ws_stream) = tokio_tungstenite::accept_async(stream).await {
         let (mut write, mut read) = ws_stream.split();
-        while let Some(msg) = read.next().await {
-            if let Ok(content) = msg {
-                window.emit("new-message", content.to_string()).expect("Couldn't emit message");
-                if let Err(e) = write.send(content).await {
-                    println!("Couldn't send message: {}", e);
-                    break;
+        if let Some(Ok(msg)) = read.next().await {
+            let message: Result<Message, _> = serde_json::from_str(&msg.to_string());
+            if let Ok(message_data) = message {
+                if message_data.command != "join" {
+                    write.close().await.expect("Couldn't close connection");
+                    return;
                 }
+
+                PEER_MAP.lock().await.insert(message_data.sender_id, write);
+                
+                while let Some(Ok(content)) = read.next().await {
+                    println!("{}", content);
+                    if content.is_text() && !content.is_empty() {
+                        let try_msg: Result<Message, serde_json::Error> = serde_json::from_str(&content.to_string());
+                        if try_msg.is_err() {
+                            continue;
+                        }
+                        let data = try_msg.unwrap();
+                        if data.command != "chat" {
+                            continue;
+                        }
+                        let string_data = serde_json::to_string(&data).expect("Couldn't convert message to string");
+                        
+                        for write in PEER_MAP.lock().await.values_mut() {
+                            write.send(Text(string_data.clone())).await.expect("Couldn't relay message to clients");
+                        }
+                        
+                        window.emit("new-message", string_data).expect("Couldn't emit message");
+                    }
+                }
+            } else {
+                write.close().await.expect("Couldn't close connection");
             }
         }
     }
