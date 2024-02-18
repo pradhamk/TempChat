@@ -1,13 +1,14 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 mod socket;
+
+use std::sync::Arc;
 
 use rand::Rng;
 use tokio::{net::TcpListener, sync::broadcast};
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
 use tauri::{command, Window};
-use socket::handle::handle_connection;
+use futures_util::lock::Mutex;
+use crate::socket::handle::{chat_shutdown, PEER_MAP};
 
 #[command]
 async fn create_chat(username: String, user_limit: u8, window: Window) -> Result<String, String> {
@@ -34,23 +35,33 @@ async fn create_chat(username: String, user_limit: u8, window: Window) -> Result
         credential: None,
     };
 
-    /*
-    let url = open_tunnel(config)
-        .await
-        .map_err(|e| format!("Unable to open up tunnel: {}", e))?;
-    println!("Tunnel located at {}", url);
-    */
-
     tokio::spawn(async move {
+        let shutdown_flag = Arc::new(Mutex::new(false));
+        let shutdown_clone = Arc::clone(&shutdown_flag);
+
+        window.listen("shutdown", move |_| {
+            println!("Shutting down server...");
+            let shutdown_clone = Arc::clone(&shutdown_clone);
+            tokio::spawn(async move {
+                chat_shutdown().await;
+                *shutdown_clone.lock().await = true;
+                PEER_MAP.lock().await.clear();
+            });
+            let _ = notify_shutdown.send(());
+        });
+
         loop {
+            if *shutdown_flag.lock().await {
+                break;
+            }
+
             if let Ok((stream, _)) = listener.accept().await {
                 tokio::spawn(
-                    handle_connection(stream, window.clone())
+                    socket::handle::handle_connection(stream, window.clone())
                 );
             }
         }
     });
-
 
     Ok(format!("http://127.0.0.1:{}", port)) // For testing purposes
 }

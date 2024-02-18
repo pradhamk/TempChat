@@ -5,10 +5,13 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message::Text;
 use std::collections::HashMap;
 use uuid::Uuid;
+use crate::socket::proto::JoinMessage;
+
+
 use super::proto::{BroadcastMessage, Client, Error, Join, RecvData, SendData, UserMessage};
 use chrono::Local;
 
-static PEER_MAP: Lazy<Mutex<HashMap<String, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+pub static PEER_MAP: Lazy<Mutex<HashMap<String, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub async fn handle_connection(
     stream: TcpStream,
@@ -59,7 +62,7 @@ async fn handle_message(message: &RecvData, window: &Window, uid: &str) -> Resul
             }
         }
         RecvData::Join(join_data) => {
-            if let Err(err) = handle_join(join_data, &uid).await {
+            if let Err(err) = handle_join(join_data, &uid, &window).await {
                 println!("Error handling join: {:?}", err);
                 close_client(&uid).await;
                 return Err(err);
@@ -83,11 +86,11 @@ async fn get_username(uid: &str) -> String {
 
 async fn handle_user_message(message: &UserMessage, window: &Window, uid: &str) -> Result<(), tokio_tungstenite::tungstenite::Error> {
     println!("{:#?}", message);
-    let send_data = BroadcastMessage {
+    let send_data = SendData::BroadcastMessage(BroadcastMessage {
         sender: get_username(uid).await,
         content: message.content.clone(),
         created: Local::now().format("%H:%M:%S").to_string(),
-    };
+    });
     println!("{:#?}", send_data);
     let string_data = serde_json::to_string(&send_data).expect("Couldn't convert message to string");
     broadcast(&string_data).await;
@@ -105,7 +108,7 @@ async fn broadcast(message: &str) {
     }
 }
 
-async fn handle_join(join_data: &Join, uid: &str) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+async fn handle_join(join_data: &Join, uid: &str, window: &Window) -> Result<(), tokio_tungstenite::tungstenite::Error> {
     let mut clients = PEER_MAP.lock().await;
     if clients.contains_key(&join_data.username) {
         if let Err(_err) = send_err(&uid, "Username too long".into()).await {
@@ -123,6 +126,16 @@ async fn handle_join(join_data: &Join, uid: &str) -> Result<(), tokio_tungstenit
     client.username = join_data.username.clone();
     client.registered = true;
     println!("Client Username: {}", client.username);
+
+    let join_message = serde_json::to_string(&SendData::JoinMessage(JoinMessage {
+        joined: client.username.clone()
+    })).unwrap();
+
+    drop(clients);
+    broadcast(&join_message).await;
+
+    window.emit("join", join_message).unwrap();
+
     Ok(())
 }
 
@@ -145,6 +158,17 @@ async fn send_err(uid: &str, message: String) -> Result<(), tokio_tungstenite::t
 async fn close_client(uid: &str) {
     println!("Closing client {}", uid);
     if let Some((_, mut client)) = PEER_MAP.lock().await.remove_entry(uid) {
+        if let Err(err) = client.write.close().await {
+            println!("Error closing client socket: {:?}", err);
+        }
+    }
+}
+
+pub async fn chat_shutdown() {
+    for client in PEER_MAP.lock().await.values_mut() {
+        client.write.send(Text(serde_json::to_string(
+            &SendData::Shutdown
+        ).unwrap())).await.expect("Couldn't send shutdown message");
         if let Err(err) = client.write.close().await {
             println!("Error closing client socket: {:?}", err);
         }

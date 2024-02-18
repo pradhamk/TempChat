@@ -15,7 +15,9 @@ pub struct Client {
 #[serde(rename_all = "camelCase")]
 pub enum SendData {
     BroadcastMessage(BroadcastMessage),
-    Error(Error)
+    Error(Error),
+    Shutdown,
+    JoinMessage(JoinMessage)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -40,6 +42,11 @@ pub struct BroadcastMessage {
     pub sender: String,
     pub content: String,
     pub created: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JoinMessage {
+    pub joined: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

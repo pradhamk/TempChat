@@ -7,7 +7,7 @@ import { IoMdSend } from "react-icons/io";
 import { useState } from "react";
 import { IoMdClose } from "react-icons/io";
 import ChatBubble from "@/components/ChatBubble";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 
 export default function ChatRoom() {
@@ -16,16 +16,23 @@ export default function ChatRoom() {
 
     const [message, setMessage] = useState("")
     const [messages, setMessages] = useState([])
+    const [joins, setJoins] = useState([])
 
     useEffect(() => {
         if(!window) { return }
-        const unlisten = listen('new-message', (e) => {
-            const content = e.payload
+        const message_unlisten = listen('new-message', (e) => {
+            const content = JSON.parse(e.payload).broadcastMessage
             setMessages((prev) => [...prev, content])
         })
 
+        const join_unlisten = listen('join', (e) => {
+            const content = JSON.parse(e.payload).joinMessage
+            setJoins((prev) => [...prev, content])
+        })
+
         return () => {
-            unlisten.then(f => f())
+            message_unlisten.then(f => f())
+            join_unlisten.then(f => f())
         }
     }, [])
 
@@ -43,7 +50,18 @@ export default function ChatRoom() {
                         {room_url.split(".")[0].replace("https://", "")}
                     </Button>
                 </h1>
-                <Button color="danger" variant="ghost" className="ml-auto" size="sm">
+                <Button 
+                    color="danger" 
+                    variant="ghost" 
+                    className="ml-auto" 
+                    size="sm"
+                    onClick={() => {
+                        emit("shutdown").then(() => {
+                            //Shutdown modal closes
+                            window.location.href = "/"
+                        })
+                    }}
+                >
                     <IoMdClose size={25}/>
                 </Button>
             </div>
@@ -52,7 +70,7 @@ export default function ChatRoom() {
             <div className="w-[80vw] max-h-[80vh] pb-20 mt-3 overflow-scroll no-scrollbar">
                 {
                     messages.map((val, i) => (
-                        <ChatBubble time={new Date().toLocaleTimeString()} author={"user"} content={val} self={false} key={i}/>
+                        <ChatBubble time={val.created} author={val.sender} content={val.content} self={false} key={i}/>
                     ))
                 }
             </div>
