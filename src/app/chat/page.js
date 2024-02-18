@@ -9,6 +9,7 @@ import { IoMdClose } from "react-icons/io";
 import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
+import Join from "@/components/Join";
 
 export default function ChatRoom() {
     const search = useSearchParams()
@@ -16,18 +17,18 @@ export default function ChatRoom() {
 
     const [message, setMessage] = useState("")
     const [messages, setMessages] = useState([])
-    const [joins, setJoins] = useState([])
 
     useEffect(() => {
         if(!window) { return }
         const message_unlisten = listen('new-message', (e) => {
-            const content = JSON.parse(e.payload).broadcastMessage
+            const content = JSON.parse(e.payload)
             setMessages((prev) => [...prev, content])
         })
 
         const join_unlisten = listen('join', (e) => {
-            const content = JSON.parse(e.payload).joinMessage
-            setJoins((prev) => [...prev, content])
+            const content = JSON.parse(e.payload)
+            console.log(content)
+            setMessages((prev) => [...prev, content])
         })
 
         return () => {
@@ -69,9 +70,14 @@ export default function ChatRoom() {
             <Divider className="w-[80vw]"/>
             <div className="w-[80vw] max-h-[80vh] pb-20 mt-3 overflow-scroll no-scrollbar">
                 {
-                    messages.map((val, i) => (
-                        <ChatBubble time={val.created} author={val.sender} content={val.content} self={false} key={i}/>
-                    ))
+                    messages.map((val, i) => {
+                        if(val.joinMessage) {
+                            return (<Join username={val.joinMessage.joined}/>)                            
+                        } else {
+                            val = val.broadcastMessage
+                            return (<ChatBubble time={val.created} author={val.sender} content={val.content} self={false} key={i}/>)
+                        }
+                    })
                 }
             </div>
             <div className="flex items-center absolute bottom-0 pb-10 bg-background">

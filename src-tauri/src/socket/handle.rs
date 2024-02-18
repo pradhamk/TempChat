@@ -3,20 +3,14 @@ use futures_util::{lock::Mutex, stream::StreamExt, SinkExt};
 use tauri::Window;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message::Text;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
-use crate::socket::proto::JoinMessage;
-
-
-use super::proto::{BroadcastMessage, Client, Error, Join, RecvData, SendData, UserMessage};
+use crate::socket::proto::{BroadcastMessage, Client, Error, Join, RecvData, SendData, UserMessage, JoinMessage};
 use chrono::Local;
 
 pub static PEER_MAP: Lazy<Mutex<HashMap<String, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-pub async fn handle_connection(
-    stream: TcpStream,
-    window: Window,
-) -> Result<(), serde_json::Error> {
+pub async fn handle_connection(stream: TcpStream, window: Window) -> Result<(), serde_json::Error> {
     println!("New client connected: {:#?}", stream.peer_addr());
     if let Ok(ws_stream) = tokio_tungstenite::accept_async(stream).await {
         let (write, mut read) = ws_stream.split();
@@ -74,9 +68,7 @@ async fn handle_message(message: &RecvData, window: &Window, uid: &str) -> Resul
 
 async fn registered(uid: &str) -> bool {
     let clients = PEER_MAP.lock().await;
-    clients
-        .get(uid)
-        .map_or(false, |client| client.registered)
+    clients.get(uid).map_or(false, |client| client.registered)
 }
 
 async fn get_username(uid: &str) -> String {
