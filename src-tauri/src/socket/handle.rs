@@ -10,6 +10,7 @@ use chrono::Local;
 
 pub static USERNAME: Lazy<Arc<Mutex<String>>> = Lazy::new(|| Arc::new(Mutex::new(String::new())));
 pub static PEER_MAP: Lazy<Mutex<HashMap<String, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+pub static USER_LIMIT: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 pub async fn handle_connection(stream: TcpStream, window: &Window) -> Result<(), serde_json::Error> {
     println!("New client connected: {:#?}", stream.peer_addr());
@@ -17,7 +18,6 @@ pub async fn handle_connection(stream: TcpStream, window: &Window) -> Result<(),
         let (write, mut read) = ws_stream.split();
         let uid = Uuid::new_v4().to_string();
         println!("Assigning client with uid {}", uid);
-
         let client = Client {
             username: "".into(),
             write,
@@ -29,6 +29,7 @@ pub async fn handle_connection(stream: TcpStream, window: &Window) -> Result<(),
         while let Some(Ok(content)) = read.next().await {
             match serde_json::from_str::<RecvData>(&content.to_string()) {
                 Ok(message) => {
+                   
                     if let Err(err) = handle_message(&message, &window, &uid).await {
                         println!("Error handling message: {:?}", err);
                         close_client(&uid).await;
@@ -74,6 +75,17 @@ async fn registered(uid: &str) -> bool {
     clients.get(uid).map_or(false, |client| client.registered)
 }
 
+async fn get_joined() -> i32 {
+    let clients = PEER_MAP.lock().await;
+    let mut joined = 0;
+    for client in clients.values() {
+        if client.registered {
+            joined += 1;
+        }
+    }
+    joined
+}
+
 async fn get_username(uid: &str) -> String {
     let clients = PEER_MAP.lock().await;
     clients.get(uid).map_or_else(|| "".to_string(), |client| client.username.clone())
@@ -81,7 +93,7 @@ async fn get_username(uid: &str) -> String {
 
 pub async fn handle_user_message(message: &UserMessage, window: &Window, uid: Option<&str>) -> Result<(), tokio_tungstenite::tungstenite::Error> {
     let send_data = SendData::BroadcastMessage(BroadcastMessage {
-        sender: if uid.is_some() { uid.unwrap().into() } else { USERNAME.lock().await.clone() },
+        sender: if uid.is_some() { get_username(uid.unwrap()).await } else { USERNAME.lock().await.clone() },
         content: message.content.clone(),
         created: Local::now().format("%H:%M:%S").to_string(),
     });
@@ -94,6 +106,9 @@ pub async fn handle_user_message(message: &UserMessage, window: &Window, uid: Op
 async fn broadcast(message: &str) {
     let mut clients = PEER_MAP.lock().await;
     for client in clients.values_mut() {
+        if !client.registered {
+            continue;
+        }
         if let Err(err) = client.write.send(Text(message.to_string())).await {
             println!("Error broadcasting message: {:?}", err);
         }
@@ -101,13 +116,28 @@ async fn broadcast(message: &str) {
 }
 
 async fn handle_join(join_data: &Join, uid: &str, window: &Window) -> Result<(), tokio_tungstenite::tungstenite::Error> {
-    let mut clients = PEER_MAP.lock().await;
-    if clients.contains_key(&join_data.username) {
-        if let Err(_err) = send_err(&uid, "Username too long".into()).await {
+    let limit = *USER_LIMIT.lock().await;
+
+    println!("Joined");
+
+    if get_joined().await + 1 > limit {
+        if let Err(_err) = send_err(&uid, "Max joins reached".into()).await {
             close_client(&uid).await;
         }
         return Ok(());
     }
+
+    let mut clients = PEER_MAP.lock().await;
+
+    for client in clients.values() {
+        if &client.username == &join_data.username {
+            if let Err(_err) = send_err(&uid, "Username already taken".into()).await {
+                close_client(&uid).await;
+            }
+            return Ok(());
+        }
+    }
+
     let client = clients.get_mut(uid).ok_or(tokio_tungstenite::tungstenite::Error::AlreadyClosed)?;
     if client.username.len() > 15 {
         if let Err(_err) = send_err(&uid, "Username too long".into()).await {

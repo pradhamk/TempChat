@@ -12,7 +12,7 @@ export default function CreateChat() {
     const [randomName, setRandomName] = useState("");
     const [username, setUsername] = useState("");
     const [usernameError, setUsernameError] = useState(false);
-    const [limit, setLimit] = useState(2);
+    const [limit, setLimit] = useState(1);
     const [loading, setLoading] = useState(false);
     const [modalError, setModalError] = useState(false);
     const [error, setError] = useState("");
@@ -42,7 +42,7 @@ export default function CreateChat() {
     };
 
     const handleLimitChange = (e) => {
-        const newLimit = parseInt(e.target.value) || 2;
+        const newLimit = parseInt(e.target.value) || 1;
         setLimit(newLimit);
     };
 
@@ -81,9 +81,9 @@ export default function CreateChat() {
                     size="lg"
                     label="Chat Limit"
                     variant="faded"
-                    description="How many users can join"
+                    description="How many users can join (besides the host)"
                     className="max-w-[40vw] mt-10"
-                    placeholder="2"
+                    placeholder="1"
                     type="number"
                     value={limit}
                     onChange={handleLimitChange}

@@ -81,6 +81,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "tokio-tungstenite",
+ "tracing",
  "uuid",
 ]
 

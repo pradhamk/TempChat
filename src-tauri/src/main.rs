@@ -8,11 +8,11 @@ use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
 use tauri::{command, Window};
 use futures_util::lock::Mutex;
-use crate::socket::handle::{chat_shutdown, handle_connection, handle_user_message, USERNAME};
+use crate::socket::handle::{chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT};
 use crate::socket::proto::RecvData;
 
 #[command]
-async fn create_chat(username: String, user_limit: u8, window: Window) -> Result<String, String> {
+async fn create_chat(username: String, user_limit: i32, window: Window) -> Result<String, String> {
     let port = rand::thread_rng().gen_range(10_000..=20_000);
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&addr)
@@ -32,11 +32,12 @@ async fn create_chat(username: String, user_limit: u8, window: Window) -> Result
         local_host: Some("127.0.0.1".into()),
         local_port: port,
         shutdown_signal: notify_shutdown.clone(),
-        max_conn: user_limit,
+        max_conn: user_limit.clone() as u8,
         credential: None,
     };
 
     *USERNAME.lock().await = username;
+    *USER_LIMIT.lock().await = user_limit;
 
     tokio::spawn(async move {
         let shutdown_flag = Arc::new(Mutex::new(false));
@@ -74,19 +75,22 @@ async fn create_chat(username: String, user_limit: u8, window: Window) -> Result
         });
 
         let wref_clone = window_ref.clone();
-        let listen_handle = tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                let wclone = Arc::clone(&wref_clone);
-                let _ = handle_connection(stream, &wclone).await;
+        println!("Spawning listener");
+
+        while let Ok((stream, _)) = listener.accept().await {
+            println!("Shutting down socket");
+            if *shutdown_flag.lock().await {
+                window_ref.unlisten(shutdown_notifier);
+                window_ref.unlisten(host_notifier);
+                return;
             }
-        });
 
-        while !*shutdown_flag.lock().await {} //Wait until shutdown flag received, then kill server
-
-        println!("Shutting down socket");
-        listen_handle.abort();
-        window_ref.unlisten(shutdown_notifier);
-        window_ref.unlisten(host_notifier);
+            let wclone = Arc::clone(&wref_clone);
+            tokio::spawn(async move {
+                println!("New connection");
+                let _ = handle_connection(stream, &wclone).await;
+            });
+        }
     });
 
     Ok(format!("http://127.0.0.1:{}", port)) // For testing purposes
