@@ -9,7 +9,7 @@ import { IoMdClose } from "react-icons/io";
 import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
-import Join from "@/components/Join";
+import Join from "@/components/JoinMessage";
 
 export default function ChatRoom() {
     const search = useSearchParams()

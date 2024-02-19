@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use futures_util::stream::SplitSink;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
@@ -8,7 +8,7 @@ use tokio_tungstenite::WebSocketStream;
 pub struct Client {
     pub username: String,
     pub write: SplitSink<WebSocketStream<TcpStream>, Message>,
-    pub registered: bool
+    pub registered: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -17,7 +17,7 @@ pub enum SendData {
     BroadcastMessage(BroadcastMessage),
     Error(Error),
     Shutdown,
-    JoinMessage(JoinMessage)
+    JoinMessage(JoinMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -58,5 +58,5 @@ pub struct JoinMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Error {
-    pub error_msg: String
+    pub error_msg: String,
 }

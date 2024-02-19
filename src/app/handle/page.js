@@ -6,19 +6,28 @@ import { generateUsername } from "unique-username-generator";
 import { TfiReload } from "react-icons/tfi";
 import { invoke } from "@tauri-apps/api/tauri";
 import BackArrow from "@/components/BackArrow";
-import Router from "next/router";
+import { useSearchParams } from "next/navigation";
+import { FaLink } from "react-icons/fa";
 
-export default function CreateChat() {
+export default function Handle() {
+    const params = useSearchParams();
+    const isCreate = params.get("type") === "create";
+
+    const url_regex = new RegExp("(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})")
+    const [invalid, setInvalid] = useState(false);
+    const [url, setUrl] = useState("");
+
     const [randomName, setRandomName] = useState("");
     const [username, setUsername] = useState("");
     const [usernameError, setUsernameError] = useState(false);
+
     const [limit, setLimit] = useState(1);
     const [loading, setLoading] = useState(false);
     const [modalError, setModalError] = useState(false);
     const [error, setError] = useState("");
 
     useEffect(() => {
-        const name = generateUsername("", 5);
+        const name = generateUsername("", 3);
         setRandomName(name);
         setUsername(name);
     }, []);
@@ -36,7 +45,7 @@ export default function CreateChat() {
     };
 
     const generateRandomName = () => {
-        const newName = generateUsername("", 5);
+        const newName = generateUsername("", 3);
         setRandomName(newName);
         setUsername(newName);
     };
@@ -46,7 +55,7 @@ export default function CreateChat() {
         setLimit(newLimit);
     };
 
-    const handleSubmit = () => {
+    const handleCreate = () => {
         setLoading(true)
         invoke('create_chat', { username: username, userLimit: limit }).then((url) => {
             setLoading(false);
@@ -57,11 +66,21 @@ export default function CreateChat() {
         });
     };
 
+    const handleJoin = () => { //TODO: Check for custom join URL schema
+        if(url.length === 0 || url.includes(" ") || !url_regex.test(url)) {
+            setInvalid(true)
+            return
+        }
+        setInvalid(false)
+    }
+
     return (
         <main>
             <BackArrow location={"/"} />
             <div className="h-[90vh] flex justify-center items-center flex-col">
-                <h1 className="font-bold text-5xl mt-0">Create a Chat Room</h1>
+                <h1 className="font-bold text-5xl mt-0">
+                    { isCreate ? "Create a Chat Room" : "Join a Chat Room" }
+                </h1>
                 <Input  
                     size="lg"
                     label="Username"
@@ -77,22 +96,37 @@ export default function CreateChat() {
                         </Button>
                     }
                 />
-                <Input 
-                    size="lg"
-                    label="Chat Limit"
-                    variant="faded"
-                    description="How many users can join (besides the host)"
-                    className="max-w-[40vw] mt-10"
-                    placeholder="1"
-                    type="number"
-                    value={limit}
-                    onChange={handleLimitChange}
-                />
-                <Button color="primary" className="mt-3 pr-10 pl-10 pt-6 pb-6 font-bold" onClick={handleSubmit}>
+                {
+                    isCreate ?
+                    <Input 
+                        size="lg"
+                        label="Chat Limit"
+                        variant="faded"
+                        description="How many users can join (besides the host)"
+                        className="max-w-[40vw] mt-10"
+                        placeholder="1"
+                        type="number"
+                        value={limit}
+                        onChange={handleLimitChange}
+                    /> :
+                    <Input  
+                        size="lg"
+                        label="Join Url"
+                        variant="faded"
+                        description="The chat room url"
+                        className="max-w-[40vw] mt-10"
+                        startContent={<FaLink color="white" />}
+                        isInvalid={invalid}
+                        onChange={(e) => setUrl(e.currentTarget.value)}
+                    />
+                }
+                <Button color="primary" className="mt-3 pr-10 pl-10 pt-6 pb-6 font-bold" onClick={isCreate ? handleCreate : handleJoin}>
                     {
                         loading ?
                         <CircularProgress color="success"/> :
-                        "Create"
+                        (
+                            isCreate ? "Create" : "Join"
+                        )
                     }
                 </Button>
                 <Modal isOpen={modalError}>

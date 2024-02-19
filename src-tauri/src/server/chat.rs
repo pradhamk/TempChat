@@ -29,7 +29,7 @@ pub async fn create_chat(username: String, user_limit: i32, window: Window) -> R
         local_host: Some("127.0.0.1".into()),
         local_port: port,
         shutdown_signal: notify_shutdown.clone(),
-        max_conn: user_limit.clone() as u8,
+        max_conn: user_limit.clone() as u8 + 5, //Allow more socket connections
         credential: None,
     };
 
