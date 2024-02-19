@@ -39,7 +39,6 @@ async fn create_chat(username: String, user_limit: u8, window: Window) -> Result
     *USERNAME.lock().await = username;
 
     tokio::spawn(async move {
-        println!("{}", window.url());
         let shutdown_flag = Arc::new(Mutex::new(false));
         let shutdown_clone = Arc::clone(&shutdown_flag);
         let window_ref = Arc::new(window);

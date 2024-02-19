@@ -5,7 +5,7 @@ export default function ChatBubble({ author, time, content, self }) {
                 <div className="flex items-center space-x-2 rtl:space-x-reverse">
                     <span className="text-sm font-semibold text-white">{author}</span>
                 </div>
-                <p className="text-sm font-normal text-white">{content}</p>
+                <p className="text-sm font-normal text-white whitespace-pre-wrap">{content}</p>
                 <span className="text-sm font-normal text-gray-400 text-right">{time}</span>
             </div>
         </div>
