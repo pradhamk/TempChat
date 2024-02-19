@@ -5,7 +5,8 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message::Text;
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
-use crate::server::proto::{BroadcastMessage, Client, Error, Join, RecvData, SendData, UserMessage, JoinMessage};
+use crate::server::proto::{Client, RecvData, SendData};
+use crate::structs::{BroadcastMessage, Error, Join, JoinMessage, UserMessage};
 use chrono::Local;
 
 pub static USERNAME: Lazy<Arc<Mutex<String>>> = Lazy::new(|| Arc::new(Mutex::new(String::new())));

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
+use crate::structs::{BroadcastMessage, Error, JoinMessage, UserMessage, Join};
 
 #[derive(Debug)]
 pub struct Client {
@@ -29,34 +30,7 @@ pub enum RecvData {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Join {
-    pub username: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct UserMessage {
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
 pub struct HostMessage {
     pub username: String,
     pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct BroadcastMessage {
-    pub sender: String,
-    pub content: String,
-    pub created: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JoinMessage {
-    pub joined: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Error {
-    pub error_msg: String,
 }
