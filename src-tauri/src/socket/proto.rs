@@ -25,6 +25,7 @@ pub enum SendData {
 pub enum RecvData {
     UserMessage(UserMessage),
     Join(Join),
+    HostMessage(HostMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -34,6 +35,12 @@ pub struct Join {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserMessage {
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HostMessage {
+    pub username: String,
     pub content: String,
 }
 

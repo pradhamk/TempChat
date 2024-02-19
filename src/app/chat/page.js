@@ -14,9 +14,27 @@ import Join from "@/components/Join";
 export default function ChatRoom() {
     const search = useSearchParams()
     const room_url = search.get('roomURL')
+    const username = search.get('username')
 
     const [message, setMessage] = useState("")
     const [messages, setMessages] = useState([])
+
+    function sendMessage(e) {
+        console.log(e)
+        e.preventDefault()
+        if(message.length === 0) {
+            return
+        }
+
+
+        emit("host-message", { userMessage: { content: message } })
+        .then(() => {
+            console.log("hello")
+            setMessage("")
+        }).catch((e) => {
+            console.log("Couldn't send message", e)
+        })
+    }
 
     useEffect(() => {
         if(!window) { return }
@@ -72,10 +90,10 @@ export default function ChatRoom() {
                 {
                     messages.map((val, i) => {
                         if(val.joinMessage) {
-                            return (<Join username={val.joinMessage.joined}/>)                            
+                            return (<Join username={val.joinMessage.joined} key={i}/>)                            
                         } else {
                             val = val.broadcastMessage
-                            return (<ChatBubble time={val.created} author={val.sender} content={val.content} self={false} key={i}/>)
+                            return (<ChatBubble time={val.created} author={val.sender} content={val.content} self={val.sender === username ? true : false} key={i}/>)
                         }
                     })
                 }
@@ -91,7 +109,7 @@ export default function ChatRoom() {
                     onValueChange={setMessage}
                     className="w-[80vw] mr-3"
                 />
-                <Button color="primary">
+                <Button color="primary" onClick={sendMessage} onPress={null}>
                     <IoMdSend className="size-5"/>
                 </Button>
             </div>

@@ -8,9 +8,10 @@ use uuid::Uuid;
 use crate::socket::proto::{BroadcastMessage, Client, Error, Join, RecvData, SendData, UserMessage, JoinMessage};
 use chrono::Local;
 
+pub static USERNAME: Lazy<Arc<Mutex<String>>> = Lazy::new(|| Arc::new(Mutex::new(String::new())));
 pub static PEER_MAP: Lazy<Mutex<HashMap<String, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-pub async fn handle_connection(stream: TcpStream, window: Window) -> Result<(), serde_json::Error> {
+pub async fn handle_connection(stream: TcpStream, window: &Window) -> Result<(), serde_json::Error> {
     println!("New client connected: {:#?}", stream.peer_addr());
     if let Ok(ws_stream) = tokio_tungstenite::accept_async(stream).await {
         let (write, mut read) = ws_stream.split();
@@ -24,6 +25,7 @@ pub async fn handle_connection(stream: TcpStream, window: Window) -> Result<(), 
         };
 
         PEER_MAP.lock().await.insert(uid.clone(), client);
+
         while let Some(Ok(content)) = read.next().await {
             match serde_json::from_str::<RecvData>(&content.to_string()) {
                 Ok(message) => {
@@ -49,7 +51,7 @@ async fn handle_message(message: &RecvData, window: &Window, uid: &str) -> Resul
                 }
                 return Ok(());
             }
-            if let Err(err) = handle_user_message(&message_data, &window, &uid).await {
+            if let Err(err) = handle_user_message(&message_data, &window, Some(&uid)).await {
                 println!("Error handling user message: {:?}", err);
                 close_client(&uid).await;
                 return Err(err);
@@ -62,6 +64,7 @@ async fn handle_message(message: &RecvData, window: &Window, uid: &str) -> Resul
                 return Err(err);
             }
         }
+        _ => {}
     };
     Ok(())
 }
@@ -76,14 +79,12 @@ async fn get_username(uid: &str) -> String {
     clients.get(uid).map_or_else(|| "".to_string(), |client| client.username.clone())
 }
 
-async fn handle_user_message(message: &UserMessage, window: &Window, uid: &str) -> Result<(), tokio_tungstenite::tungstenite::Error> {
-    println!("{:#?}", message);
+pub async fn handle_user_message(message: &UserMessage, window: &Window, uid: Option<&str>) -> Result<(), tokio_tungstenite::tungstenite::Error> {
     let send_data = SendData::BroadcastMessage(BroadcastMessage {
-        sender: get_username(uid).await,
+        sender: if uid.is_some() { uid.unwrap().into() } else { USERNAME.lock().await.clone() },
         content: message.content.clone(),
         created: Local::now().format("%H:%M:%S").to_string(),
     });
-    println!("{:#?}", send_data);
     let string_data = serde_json::to_string(&send_data).expect("Couldn't convert message to string");
     broadcast(&string_data).await;
     window.emit("new-message", string_data).expect("Couldn't emit message to frontend");
@@ -92,7 +93,6 @@ async fn handle_user_message(message: &UserMessage, window: &Window, uid: &str) 
 
 async fn broadcast(message: &str) {
     let mut clients = PEER_MAP.lock().await;
-    println!("{}", message);
     for client in clients.values_mut() {
         if let Err(err) = client.write.send(Text(message.to_string())).await {
             println!("Error broadcasting message: {:?}", err);

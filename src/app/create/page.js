@@ -50,7 +50,7 @@ export default function CreateChat() {
         setLoading(true)
         invoke('create_chat', { username: username, userLimit: limit }).then((url) => {
             setLoading(false);
-            window.location.href = `/chat?roomURL=${url}`
+            window.location.href = `/chat?roomURL=${url}&username=${username}`
         }).catch((err) => {
             setError(err)
             setModalError(true)

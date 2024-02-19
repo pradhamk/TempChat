@@ -4,9 +4,9 @@ export default function ChatBubble({ author, time, content, self }) {
             <div className={`flex flex-col w-full max-w-[250px] leading-1.5 p-4 ${self ? "bg-primary rounded-s-xl rounded-br-xl" : "bg-[#454545] rounded-e-xl rounded-es-xl"}`}>
                 <div className="flex items-center space-x-2 rtl:space-x-reverse">
                     <span className="text-sm font-semibold text-white">{author}</span>
-                    <span className="text-sm font-normal text-gray-400">{time}</span>
                 </div>
                 <p className="text-sm font-normal text-white">{content}</p>
+                <span className="text-sm font-normal text-gray-400 text-right">{time}</span>
             </div>
         </div>
     )
