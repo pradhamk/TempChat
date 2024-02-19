@@ -20,20 +20,17 @@ export default function ChatRoom() {
     const [messages, setMessages] = useState([])
 
     function sendMessage(e) {
-        console.log(e)
-        e.preventDefault()
         if(message.length === 0) {
             return
         }
 
-
         emit("host-message", { userMessage: { content: message } })
-        .then(() => {
-            console.log("hello")
-            setMessage("")
-        }).catch((e) => {
-            console.log("Couldn't send message", e)
-        })
+            .then(() => {
+                console.log("hello")
+                setMessage("")
+            }).catch((e) => {
+                console.log("Couldn't send message", e)
+            })  
     }
 
     useEffect(() => {
@@ -108,6 +105,12 @@ export default function ChatRoom() {
                     value={message}
                     onValueChange={setMessage}
                     className="w-[80vw] mr-3"
+                    onKeyDown={(e) => {
+                        if(e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            sendMessage()
+                        }
+                    }}
                 />
                 <Button color="primary" onClick={sendMessage} onPress={null}>
                     <IoMdSend className="size-5"/>
