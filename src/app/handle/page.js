@@ -59,7 +59,7 @@ export default function Handle() {
         setLoading(true)
         invoke('create_chat', { username: username, userLimit: limit }).then((url) => {
             setLoading(false);
-            window.location.href = `/chat?roomURL=${url}&username=${username}`
+            window.location.href = `/chat?roomURL=${url}&username=${username}&type=host`
         }).catch((err) => {
             setError(err)
             setModalError(true)
@@ -71,7 +71,15 @@ export default function Handle() {
             setInvalid(true)
             return
         }
+        setLoading(true)
         setInvalid(false)
+        invoke('join_chat', { username: username, chatUrl: url }).then((e) => {
+            setLoading(false)
+            window.location.href = `/chat?roomURL=${url}&username=${username}&type=client`
+        }).catch((err) => {
+            setError(err)
+            setModalError(true)
+        })
     }
 
     return (

@@ -1,9 +1,9 @@
-mod server;
 mod client;
+mod server;
 mod structs;
 
-use self::server::chat::create_chat;
 use self::client::client::join_chat;
+use self::server::chat::create_chat;
 
 fn main() {
     tauri::Builder::default()

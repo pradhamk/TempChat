@@ -1,15 +1,35 @@
-use std::sync::Arc;
-use rand::Rng;
-use tokio::{net::TcpListener, sync::broadcast};
+use crate::server::proto::RecvData;
+use crate::server::socket::handle::{
+    chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT,
+};
+use futures_util::StreamExt;
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
+use rand::Rng;
+use tokio::sync::mpsc;
 use tauri::{command, Window};
-use futures_util::lock::Mutex;
-use crate::server::socket::handle::{chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT};
-use crate::server::proto::RecvData;
+use tokio::{net::TcpListener, sync::broadcast};
+use crate::server::socket::handle::{handle_message, close_client};
+
+async fn handle_channel_message(mut rx: mpsc::UnboundedReceiver<(RecvData, String)>, window: Window) {
+    loop {
+        let data = rx.recv().await;
+        if let Some((message, uid)) = data {
+            if let Err(err) = handle_message(&message, &window, &uid).await {
+                println!("Error handling message: {:?}", err);
+                close_client(&uid).await;
+                return;
+            }
+        }
+    }
+}
 
 #[command]
-pub async fn create_chat(username: String, user_limit: i32, window: Window) -> Result<String, String> {
+pub async fn create_chat(
+    username: String,
+    user_limit: i32,
+    window: Window,
+) -> Result<String, String> {
     let port = rand::thread_rng().gen_range(10_000..=20_000);
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&addr)
@@ -43,56 +63,64 @@ pub async fn create_chat(username: String, user_limit: i32, window: Window) -> R
     */
 
     tokio::spawn(async move {
-        let shutdown_flag = Arc::new(Mutex::new(false));
-        let shutdown_clone = Arc::clone(&shutdown_flag);
-        let window_ref = Arc::new(window);
+        let (tx, rx) = mpsc::unbounded_channel::<(RecvData, String)>();
+        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<bool>();
 
-        let shutdown_notifier = window_ref.listen("shutdown", move |_| {
-            let shutdown_flag = Arc::clone(&shutdown_clone);
-            let notify_shutdown = notify_shutdown.clone();
-
-            tokio::spawn(async move {
-                println!("Shutting down server...");
-                chat_shutdown().await;
-                *shutdown_flag.lock().await = true;
-                let _ = notify_shutdown.send(());
-            });
+        let shutdown_handler = window.listen("shutdown", move |_| {
+            shutdown_tx.send(true).expect("Couldn't send shutdown channel msg");
+        });
+        
+        let window_clone = window.clone();
+        let host_handle = window.listen("host-message", move |e| {
+            if let Some(payload) = e.payload() {
+                if let Ok(message) = serde_json::from_str::<RecvData>(&payload) {
+                    if let RecvData::UserMessage(data) = message {
+                        tokio::spawn(async move {
+                            if let Err(err) = handle_user_message(&data, None).await {
+                                println!("Couldn't send host message: {:?}", err);
+                            }
+                        });
+                        window_clone
+                            .emit("new-message", payload)
+                            .expect("Couldn't emit message to frontend");
+                    }
+                } 
+                else {
+                    println!("Host message conversion error");
+                }
+            }
         });
 
-        let ref_clone = window_ref.clone();
-        let host_notifier = window_ref.listen("host-message", move |e| {
-            let wclone = Arc::clone(&ref_clone);
-            tokio::spawn(async move {
-                if let Some(payload) = e.payload() {
-                    if let Ok(message) = serde_json::from_str::<RecvData>(&payload) {
-                        if let RecvData::UserMessage(data) = message {
-                            if let Err(err) = handle_user_message(&data, &wclone, None).await {
-                                println!("Couldn't send host message: {:?}", err);
+        let conn_handle = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    println!("New connection");
+                    if let Ok(Some((mut read, uid))) = handle_connection(stream).await {
+                        while let Some(Ok(content)) = read.next().await {
+                            if let Ok(message) = serde_json::from_str::<RecvData>(&content.to_string()) {
+                                tx.send((message, uid.clone())).expect("Couldn't send message over channel");
                             }
                         }
                     } else {
-                        println!("Host message conversion error");
+                        println!("Client connection error");
                     }
-                }
-            });
-        });
-
-        let wref_clone = window_ref.clone();
-        println!("Spawning listener");
-
-        while let Ok((stream, _)) = listener.accept().await {
-            println!("Shutting down socket");
-            if *shutdown_flag.lock().await {
-                window_ref.unlisten(shutdown_notifier);
-                window_ref.unlisten(host_notifier);
-                return;
+                });
             }
+        });
+        
 
-            let wclone = Arc::clone(&wref_clone);
-            tokio::spawn(async move {
-                println!("New connection");
-                let _ = handle_connection(stream, &wclone).await;
-            });
+        tokio::select! {
+            _ = handle_channel_message(rx, window.clone()) => {}
+            _ = shutdown_rx.recv() => {
+                println!("Shutting down server");
+                chat_shutdown().await;
+                let _ = notify_shutdown.send(());
+                conn_handle.abort();
+                window.unlisten(shutdown_handler);
+                window.unlisten(host_handle);
+                shutdown_rx.close();
+            }
         }
     });
 

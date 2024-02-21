@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Divider, Button, Textarea } from "@nextui-org/react";
+import { Divider, Button, Textarea, Modal, ModalBody, ModalContent, ModalHeader, ModalFooter } from "@nextui-org/react";
 import { FaRegCopy } from "react-icons/fa";
 import { IoMdSend } from "react-icons/io";
 import { useState } from "react";
@@ -9,15 +9,17 @@ import { IoMdClose } from "react-icons/io";
 import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
-import Join from "@/components/JoinMessage";
+import JoinLeave from "@/components/JoinLeave";
 
 export default function ChatRoom() {
     const search = useSearchParams()
     const room_url = search.get('roomURL')
     const username = search.get('username')
+    const isHost = search.get("type") === "host"
 
     const [message, setMessage] = useState("")
     const [messages, setMessages] = useState([])
+    const [isShutdown, setShutdown] = useState(false)
 
     function sendMessage(e) {
         if(message.length === 0) {
@@ -26,7 +28,6 @@ export default function ChatRoom() {
 
         emit("host-message", { userMessage: { content: message } })
             .then(() => {
-                console.log("hello")
                 setMessage("")
             }).catch((e) => {
                 console.log("Couldn't send message", e)
@@ -37,18 +38,36 @@ export default function ChatRoom() {
         if(!window) { return }
         const message_unlisten = listen('new-message', (e) => {
             const content = JSON.parse(e.payload)
+            console.log(content)
             setMessages((prev) => [...prev, content])
         })
 
         const join_unlisten = listen('join', (e) => {
             const content = JSON.parse(e.payload)
-            console.log(content)
             setMessages((prev) => [...prev, content])
+        })
+
+        const error_unlisten = listen('error', (e) => {
+            console.log(e.payload)
+        })
+
+        const shutdown_unlisten = listen('shutdown', (e) => {
+            setShutdown(true)
+        })
+
+        const exit_unlisten = listen('client_exit', (e) => {
+            console.log(e.payload)
+            const content = JSON.parse(e.payload)
+            console.log(content)
+            setMessages((prev) => [...prev, { exit: content}])
         })
 
         return () => {
             message_unlisten.then(f => f())
             join_unlisten.then(f => f())
+            error_unlisten.then(f => f())
+            shutdown_unlisten.then(f => f())
+            exit_unlisten.then(f => f())
         }
     }, [])
 
@@ -72,8 +91,12 @@ export default function ChatRoom() {
                     className="ml-auto" 
                     size="sm"
                     onClick={() => {
+                        isHost ?
                         emit("shutdown").then(() => {
                             //Shutdown modal closes
+                            window.location.href = "/"
+                        }) :
+                        emit("client_exit").then(() => {
                             window.location.href = "/"
                         })
                     }}
@@ -87,7 +110,9 @@ export default function ChatRoom() {
                 {
                     messages.map((val, i) => {
                         if(val.joinMessage) {
-                            return (<Join username={val.joinMessage.joined} key={i}/>)                            
+                            return (<JoinLeave username={val.joinMessage.joined} key={i} isJoin={true}/>)                            
+                        } else if(val.exit) {
+                            return (<JoinLeave username={val.exit.username} key={i} isJoin={false}/>)
                         } else {
                             val = val.broadcastMessage
                             return (<ChatBubble time={val.created} author={val.sender} content={val.content} self={val.sender === username ? true : false} key={i}/>)
@@ -116,6 +141,28 @@ export default function ChatRoom() {
                     <IoMdSend className="size-5"/>
                 </Button>
             </div>
+            <Modal
+                isOpen={isShutdown}
+                isDismissable={false}
+            >
+                <ModalContent>
+                    <ModalHeader>Chat Closed</ModalHeader>
+                    <ModalBody>
+                        The chat lobby has been closed by the host.
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button 
+                            color="primary" 
+                            onPress={() => {
+                                setShutdown(false)
+                                window.location.href = "/"
+                            }}
+                        >
+                            Continue
+                        </Button>
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
         </main>
     )
 }
