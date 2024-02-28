@@ -47,7 +47,7 @@ pub async fn handle_message(
                 }
                 return Ok(());
             }
-            if let Err(err) = handle_user_message(&message_data, Some(&uid)).await {
+            if let Err(err) = handle_user_message(&message_data, Some(&uid), &window).await {
                 println!("Error handling user message: {:?}", err);
                 close_client(&uid).await;
                 return Err(err);
@@ -112,6 +112,7 @@ async fn get_username(uid: &str) -> String {
 pub async fn handle_user_message(
     message: &UserMessage,
     uid: Option<&str>,
+    window: &Window
 ) -> Result<(), tokio_tungstenite::tungstenite::Error> {
     let send_data = SendData::BroadcastMessage(BroadcastMessage {
         sender: if uid.is_some() {
@@ -125,6 +126,8 @@ pub async fn handle_user_message(
     let string_data =
         serde_json::to_string(&send_data).expect("Couldn't convert message to string");
     broadcast(&string_data).await;
+    println!("{}", string_data);
+    window.emit("new-message", &string_data).unwrap();
     Ok(())
 }
 

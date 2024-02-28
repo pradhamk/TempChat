@@ -75,14 +75,12 @@ pub async fn create_chat(
             if let Some(payload) = e.payload() {
                 if let Ok(message) = serde_json::from_str::<RecvData>(&payload) {
                     if let RecvData::UserMessage(data) = message {
+                        let window_clone = window_clone.clone();
                         tokio::spawn(async move {
-                            if let Err(err) = handle_user_message(&data, None).await {
+                            if let Err(err) = handle_user_message(&data, None, &window_clone).await {
                                 println!("Couldn't send host message: {:?}", err);
                             }
                         });
-                        window_clone
-                            .emit("new-message", payload)
-                            .expect("Couldn't emit message to frontend");
                     }
                 } 
                 else {
@@ -99,6 +97,7 @@ pub async fn create_chat(
                     if let Ok(Some((mut read, uid))) = handle_connection(stream).await {
                         while let Some(Ok(content)) = read.next().await {
                             if let Ok(message) = serde_json::from_str::<RecvData>(&content.to_string()) {
+                                println!("{:#?}", message);
                                 tx.send((message, uid.clone())).expect("Couldn't send message over channel");
                             }
                         }

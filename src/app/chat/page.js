@@ -48,7 +48,7 @@ export default function ChatRoom() {
         })
 
         const error_unlisten = listen('error', (e) => {
-            console.log(e.payload)
+            console.log("error", e.payload)
         })
 
         const shutdown_unlisten = listen('shutdown', (e) => {
@@ -60,7 +60,7 @@ export default function ChatRoom() {
             const content = JSON.parse(e.payload)
             console.log(content)
             setMessages((prev) => [...prev, { exit: content}])
-        })
+        })  
 
         return () => {
             message_unlisten.then(f => f())
@@ -114,7 +114,7 @@ export default function ChatRoom() {
                         } else if(val.exit) {
                             return (<JoinLeave username={val.exit.username} key={i} isJoin={false}/>)
                         } else {
-                            val = val.broadcastMessage
+                            val = val.broadcastMessage;
                             return (<ChatBubble time={val.created} author={val.sender} content={val.content} self={val.sender === username ? true : false} key={i}/>)
                         }
                     })
