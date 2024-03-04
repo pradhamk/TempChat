@@ -26,7 +26,7 @@ export default function ChatRoom() {
             return
         }
 
-        emit("host-message", { userMessage: { content: message } })
+        emit("host-message", { content: message })
             .then(() => {
                 setMessage("")
             }).catch((e) => {
@@ -114,7 +114,6 @@ export default function ChatRoom() {
                         } else if(val.exit) {
                             return (<JoinLeave username={val.exit.username} key={i} isJoin={false}/>)
                         } else {
-                            val = val.broadcastMessage;
                             return (<ChatBubble time={val.created} author={val.sender} content={val.content} self={val.sender === username ? true : false} key={i}/>)
                         }
                     })

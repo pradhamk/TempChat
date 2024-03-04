@@ -1,10 +1,13 @@
-use crate::server::proto::RecvData;
+use crate::server::proto::{ChatData, RecvData};
 use crate::server::socket::handle::{
-    chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT,
+    chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT, CHAT_DATA
 };
+use crate::structs::UserMessage;
+use aes_gcm::{Aes256Gcm, AesGcm, Key, KeyInit};
 use futures_util::StreamExt;
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
+use rand::rngs::OsRng;
 use rand::Rng;
 use tokio::sync::mpsc;
 use tauri::{command, Window};
@@ -37,6 +40,19 @@ pub async fn create_chat(
         .map_err(|_| format!("Unable to bind to port {}", port))?;
     println!("Started listening on port {}", port);
 
+    println!("Generating chat key");
+    let key_arr = Aes256Gcm::generate_key(OsRng);
+    let key_vec = key_arr.to_vec();
+    let key: &Key<Aes256Gcm> = key_vec.as_slice().into();
+    let cipher = AesGcm::new(key);
+
+    *USERNAME.lock().await = username;
+    *USER_LIMIT.lock().await = user_limit;
+    *CHAT_DATA.lock().await = ChatData {
+        key_cipher: cipher,
+        key: key_vec
+    };
+
     let (notify_shutdown, _) = broadcast::channel(1);
     let alphabet: [char; 36] = [
         '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
@@ -53,9 +69,6 @@ pub async fn create_chat(
         credential: None,
     };
 
-    *USERNAME.lock().await = username;
-    *USER_LIMIT.lock().await = user_limit;
-
     /*
     let tunnel_url = open_tunnel(config)
         .await
@@ -65,7 +78,7 @@ pub async fn create_chat(
     tokio::spawn(async move {
         let (tx, rx) = mpsc::unbounded_channel::<(RecvData, String)>();
         let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<bool>();
-
+        
         let shutdown_handler = window.listen("shutdown", move |_| {
             shutdown_tx.send(true).expect("Couldn't send shutdown channel msg");
         });
@@ -73,15 +86,13 @@ pub async fn create_chat(
         let window_clone = window.clone();
         let host_handle = window.listen("host-message", move |e| {
             if let Some(payload) = e.payload() {
-                if let Ok(message) = serde_json::from_str::<RecvData>(&payload) {
-                    if let RecvData::UserMessage(data) = message {
+                if let Ok(message) = serde_json::from_str::<UserMessage>(&payload) {
                         let window_clone = window_clone.clone();
                         tokio::spawn(async move {
-                            if let Err(err) = handle_user_message(&data, None, &window_clone).await {
+                            if let Err(err) = handle_user_message(&message, None, &window_clone).await {
                                 println!("Couldn't send host message: {:?}", err);
                             }
                         });
-                    }
                 } 
                 else {
                     println!("Host message conversion error");
