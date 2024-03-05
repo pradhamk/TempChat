@@ -210,7 +210,7 @@ async fn handle_join(
     let client = clients
         .get_mut(uid)
         .ok_or(tokio_tungstenite::tungstenite::Error::AlreadyClosed)?;
-    if client.username.len() > 15 {
+    if client.username.len() > 10 {
         if let Err(_err) = send_err(&uid, "Username too long".into()).await {
             close_client(&uid).await;
         }

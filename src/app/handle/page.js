@@ -34,7 +34,7 @@ export default function Handle() {
 
     const handleUsernameChange = (e) => {
         const newUsername = e.target.value;
-        if (newUsername.length > 15) {
+        if (newUsername.length > 10) {
             setUsernameError(true);
             return;
         }
