@@ -58,7 +58,11 @@ pub async fn handle_message(
             }
 
             if let Ok(msg_data) = decrypt_data(enc_data).await {
-                if let Ok(message_data) = serde_json::from_str(&String::from_utf8(msg_data).unwrap()) {
+                if let Ok(message_data) = serde_json::from_str::<UserMessage>(&String::from_utf8(msg_data).unwrap()) {
+                    if message_data.content.len() > 5000 {
+                        let _ = send_err(&uid, "Message too long".into()).await;
+                        return Ok(());
+                    }
                     if let Err(err) = handle_user_message(&message_data, Some(&uid), &window).await {
                         println!("Error handling user message: {:?}", err);
                         close_client(&uid).await;

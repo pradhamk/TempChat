@@ -27,6 +27,15 @@ export default function ChatRoom() {
             return
         }
 
+        if(message.length > 5000) {
+            setIsSendErr(true)
+            setSendErr("Message too long!")
+            return
+        } else {
+            setIsSendErr(false)
+            setSendErr("")
+        }
+
         emit("host-message", { content: message })
             .then(() => {
                 setMessage("")
@@ -126,26 +135,31 @@ export default function ChatRoom() {
                     })
                 }
             </div>
-            <div className="flex items-center absolute bottom-0 pb-10 bg-background">
-                <Textarea
-                    placeholder="Send your message"
-                    maxLength={1000}
-                    maxRows={4}
-                    minRows={1}
-                    variant="faded"
-                    value={message}
-                    onValueChange={setMessage}
-                    className="w-[80vw] mr-3"
-                    onKeyDown={(e) => {
-                        if(e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            sendMessage()
-                        }
-                    }}
-                />
-                <Button color="primary" onClick={sendMessage} onPress={null}>
-                    <IoMdSend className="size-5"/>
-                </Button>
+            <div className="absolute bottom-0 pb-10 bg-background">
+                <div className="flex items-center">
+                    <Textarea
+                        placeholder="Send your message"
+                        maxLength={5000}
+                        maxRows={4}
+                        minRows={1}
+                        variant="faded"
+                        value={message}
+                        onValueChange={setMessage}
+                        className="w-[80vw] mr-3"
+                        onKeyDown={(e) => {
+                            if(e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                sendMessage()
+                            }
+                        }}
+                    />
+                    <Button color="primary" onClick={sendMessage} onPress={null}>
+                        <IoMdSend className="size-5"/>
+                    </Button>
+                </div>
+                <h3 className="text-gray-400 text-xs mt-2 ml-2">
+                    {message.length.toLocaleString()}/5,000
+                </h3>
             </div>
             <Modal
                 isOpen={isShutdown}
