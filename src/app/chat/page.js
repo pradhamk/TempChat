@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Divider, Button, Textarea, Modal, ModalBody, ModalContent, ModalHeader, ModalFooter } from "@nextui-org/react";
 import { FaRegCopy } from "react-icons/fa";
 import { IoMdSend } from "react-icons/io";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { IoMdClose } from "react-icons/io";
 import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -20,6 +20,7 @@ export default function ChatRoom() {
     const [message, setMessage] = useState("")
     const [messages, setMessages] = useState([])
     const [isShutdown, setShutdown] = useState(false)
+    const msgRef = useRef(null)
 
     function sendMessage(e) {
         if(message.length === 0) {
@@ -33,6 +34,12 @@ export default function ChatRoom() {
                 console.log("Couldn't send message", e)
             })  
     }
+
+    useEffect(() => {
+        if(msgRef.current) {
+            msgRef.current.scrollTop = msgRef.current.scrollHeight;
+        }
+    }, [messages])
 
     useEffect(() => {
         if(!window) { return }
@@ -106,7 +113,7 @@ export default function ChatRoom() {
             </div>
             
             <Divider className="w-[80vw]"/>
-            <div className="w-[80vw] max-h-[80vh] pb-20 mt-3 overflow-scroll no-scrollbar">
+            <div className="w-[80vw] max-h-[80vh] pb-20 mt-3 overflow-y-scroll scroll-smooth" ref={msgRef}>
                 {
                     messages.map((val, i) => {
                         if(val.joinMessage) {

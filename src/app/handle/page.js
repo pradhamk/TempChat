@@ -27,14 +27,14 @@ export default function Handle() {
     const [error, setError] = useState("");
 
     useEffect(() => {
-        const name = generateUsername("", 3);
+        const name = generateUsername("", 3, 15);
         setRandomName(name);
         setUsername(name);
     }, []);
 
     const handleUsernameChange = (e) => {
         const newUsername = e.target.value;
-        if (newUsername.length > 10) {
+        if (newUsername.length > 15) {
             setUsernameError(true);
             return;
         }
@@ -45,7 +45,7 @@ export default function Handle() {
     };
 
     const generateRandomName = () => {
-        const newName = generateUsername("", 3);
+        const newName = generateUsername("", 3, 15);
         setRandomName(newName);
         setUsername(newName);
     };
