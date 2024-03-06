@@ -10,6 +10,7 @@ import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import JoinLeave from "@/components/JoinLeave";
+import { exit } from "@tauri-apps/api/process";
 
 export default function ChatRoom() {
     const search = useSearchParams()
@@ -27,21 +28,26 @@ export default function ChatRoom() {
             return
         }
 
-        if(message.length > 5000) {
-            setIsSendErr(true)
-            setSendErr("Message too long!")
-            return
-        } else {
-            setIsSendErr(false)
-            setSendErr("")
-        }
-
         emit("host-message", { content: message })
             .then(() => {
                 setMessage("")
             }).catch((e) => {
                 console.log("Couldn't send message", e)
             })  
+    }
+
+    function leaveSession(exit) {
+        isHost ?
+            emit("shutdown").then(() => {
+                if(!exit) {
+                    window.location.href = '/'
+                }
+            }) :
+            emit("client_exit").then(() => {
+                if(!exit) {
+                    window.location.href = '/'
+                }
+            })
     }
 
     useEffect(() => {
@@ -68,7 +74,9 @@ export default function ChatRoom() {
         })
 
         const shutdown_unlisten = listen('shutdown', (e) => {
-            setShutdown(true)
+            if(!isHost) {
+                setShutdown(true)
+            }
         })
 
         const exit_unlisten = listen('client_exit', (e) => {
@@ -77,6 +85,13 @@ export default function ChatRoom() {
             console.log(content)
             setMessages((prev) => [...prev, { exit: content}])
         })  
+
+        import('@tauri-apps/api/window').then((w) => {
+            w.getCurrent().onCloseRequested(async (e) => {
+                leaveSession(true)
+                await exit(1)
+            })    
+        });
 
         return () => {
             message_unlisten.then(f => f())
@@ -106,16 +121,7 @@ export default function ChatRoom() {
                     variant="ghost" 
                     className="ml-auto" 
                     size="sm"
-                    onClick={() => {
-                        isHost ?
-                        emit("shutdown").then(() => {
-                            //Shutdown modal closes
-                            window.location.href = "/"
-                        }) :
-                        emit("client_exit").then(() => {
-                            window.location.href = "/"
-                        })
-                    }}
+                    onClick={(e) => leaveSession(false)}
                 >
                     <IoMdClose size={25}/>
                 </Button>
