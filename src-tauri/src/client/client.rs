@@ -4,10 +4,10 @@ use crate::{
     client::proto::{Client, SendData},
     structs::{BroadcastMessage, EncData, Join},
 };
-use aes_gcm::{aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit};
+use aes_siv::{aead::{Aead, OsRng}, Aes256SivAead, Key, KeyInit, Nonce};
 use futures_util::{lock::Mutex, SinkExt, StreamExt};
 use once_cell::sync::Lazy;
-use rand::rngs::OsRng;
+use rand::RngCore;
 use rsa::{pkcs1::EncodeRsaPublicKey, Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use tauri::{command, Window};
 use tokio::sync::mpsc;
@@ -25,8 +25,8 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
                 RecvData::EncData(enc_data) => {
                     let mut client = CLIENT.lock().await;
                     if client.chat_key.is_some() {
-                        let key: &Key<Aes256Gcm> = client.chat_key.as_mut().unwrap().as_slice().into();
-                        if let Ok(dec_data) = Aes256Gcm::new(key).decrypt(enc_data.nonce.as_slice().into(), enc_data.data.as_slice()) {
+                        let key: &Key<Aes256SivAead> = client.chat_key.as_mut().unwrap().as_slice().into();
+                        if let Ok(dec_data) = Aes256SivAead::new(key).decrypt(enc_data.nonce.as_slice().into(), enc_data.data.as_slice()) {
                             if let Ok(broadcast_data) = serde_json::from_str::<BroadcastMessage>(&String::from_utf8(dec_data).expect("Value isn't string")) {
                                 println!("Broadcast Data: {:#?}", broadcast_data);
                                 window
@@ -126,9 +126,11 @@ pub async fn join_chat(username: String, chat_url: String, window: Window) {
                 if try_key.is_none() {
                     //TODO: Display user error message
                 }
-                let key: &Key<Aes256Gcm> = try_key.unwrap().as_slice().into();
-                let cipher = Aes256Gcm::new(key);
-                let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+                let key: &Key<Aes256SivAead> = try_key.unwrap().as_slice().into();
+                let cipher = Aes256SivAead::new(key);
+                let mut nonce: [u8; 16] = [0; 16];
+                OsRng.fill_bytes(&mut nonce);
+                let nonce = Nonce::from_slice(&nonce);
                 let cipher_text = cipher.encrypt(&nonce, e.payload().unwrap().as_bytes()).expect("Couldn't encrypt user message");
 
                 let send_data = serde_json::to_string(&SendData::EncData(EncData {

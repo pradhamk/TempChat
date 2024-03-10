@@ -3,11 +3,10 @@ use crate::server::socket::handle::{
     chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT, CHAT_DATA
 };
 use crate::structs::UserMessage;
-use aes_gcm::{Aes256Gcm, AesGcm, Key, KeyInit};
+use aes_siv::{Aes256SivAead, aead::{KeyInit, OsRng}};
 use futures_util::StreamExt;
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
-use rand::rngs::OsRng;
 use rand::Rng;
 use tokio::sync::mpsc;
 use tauri::{command, Window};
@@ -41,16 +40,14 @@ pub async fn create_chat(
     println!("Started listening on port {}", port);
 
     println!("Generating chat key");
-    let key_arr = Aes256Gcm::generate_key(OsRng);
-    let key_vec = key_arr.to_vec();
-    let key: &Key<Aes256Gcm> = key_vec.as_slice().into();
-    let cipher = AesGcm::new(key);
+    let key = Aes256SivAead::generate_key(&mut OsRng);
+    let cipher = Aes256SivAead::new(&key);
 
     *USERNAME.lock().await = username;
     *USER_LIMIT.lock().await = user_limit;
     *CHAT_DATA.lock().await = ChatData {
         key_cipher: cipher,
-        key: key_vec
+        key: key.to_vec()
     };
 
     let (notify_shutdown, _) = broadcast::channel(1);

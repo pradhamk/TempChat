@@ -1,12 +1,11 @@
 use crate::server::proto::{Client, Exit, RecvData, SendData, ChatData};
 use crate::structs::{BroadcastMessage, EncData, Error, Join, JoinMessage, KeyMessage, UserMessage};
-use aes_gcm::aead::Aead;
-use aes_gcm::{AeadCore, Aes256Gcm, KeyInit};
+use aes_siv::{Aes256SivAead, aead::{Aead, OsRng}, Nonce};
 use chrono::Local;
 use futures_util::stream::SplitStream;
 use futures_util::{lock::Mutex, stream::StreamExt, SinkExt};
 use once_cell::sync::Lazy;
-use rand::rngs::OsRng;
+use rand::{Rng, RngCore};
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use std::{collections::HashMap, sync::Arc};
@@ -99,7 +98,7 @@ pub async fn handle_message(
     Ok(())
 }
 
-async fn decrypt_data(enc_data: &EncData) -> Result<Vec<u8>, aes_gcm::Error>{
+async fn decrypt_data(enc_data: &EncData) -> Result<Vec<u8>, aes_siv::Error>{
     let key_cipher = &CHAT_DATA.lock().await.key_cipher;
     key_cipher.decrypt(enc_data.nonce.as_slice().into(), enc_data.data.as_slice())
 }
@@ -150,7 +149,9 @@ pub async fn handle_user_message(
     };
     let string_data = serde_json::to_string(&send_data).expect("Couldn't convert message to string");
 
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let mut nonce: [u8; 16] = [0; 16];
+    OsRng.fill_bytes(&mut nonce);
+    let nonce = Nonce::from_slice(&nonce);
     let cipher_text = chat_data.key_cipher.encrypt(&nonce, string_data.as_bytes()).expect("Couldn't encrypt message data");
 
     let enc_data = serde_json::to_string(&SendData::EncData(EncData {

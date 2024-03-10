@@ -1,5 +1,5 @@
-use crate::structs::{BroadcastMessage, EncData, Error, Join, JoinMessage, KeyMessage, UserMessage};
-use aes_gcm::{Aes256Gcm, KeyInit};
+use crate::structs::{EncData, Error, Join, JoinMessage, KeyMessage};
+use aes_siv::{Aes256SivAead, aead::KeyInit};
 use futures_util::stream::SplitSink;
 use rand::rngs::OsRng;
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -41,14 +41,14 @@ pub struct Exit {
 }
 
 pub struct ChatData {
-    pub key_cipher: Aes256Gcm,
+    pub key_cipher: Aes256SivAead,
     pub key: Vec<u8>
 }
 
 impl Default for ChatData {
     fn default() -> Self {
         ChatData {
-            key_cipher: Aes256Gcm::new(&Aes256Gcm::generate_key(OsRng)),
+            key_cipher: Aes256SivAead::new(&Aes256SivAead::generate_key(&mut OsRng)),
             key: Vec::new()
         }
     }
