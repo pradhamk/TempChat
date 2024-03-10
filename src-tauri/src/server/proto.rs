@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::structs::{EncData, Error, Join, JoinMessage, KeyMessage};
 use aes_siv::{Aes256SivAead, aead::KeyInit};
 use futures_util::stream::SplitSink;
@@ -43,6 +45,9 @@ pub struct Exit {
 pub struct ChatData {
     pub key_cipher: Aes256SivAead,
     pub key: Vec<u8>,
+    pub peer_map: HashMap<String, Client>,
+    pub user_limit: i32,
+    pub host_username: String,
 }
 
 impl Default for ChatData {
@@ -50,6 +55,9 @@ impl Default for ChatData {
         ChatData {
             key_cipher: Aes256SivAead::new(&Aes256SivAead::generate_key(&mut OsRng)),
             key: Vec::new(),
+            peer_map: HashMap::new(),
+            user_limit: 2,
+            host_username: String::new()
         }
     }
 }

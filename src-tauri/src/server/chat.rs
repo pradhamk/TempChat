@@ -1,15 +1,14 @@
+use std::collections::HashMap;
+
 use crate::server::proto::{ChatData, RecvData};
-use crate::server::socket::handle::{
-    chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT, CHAT_DATA
-};
+use crate::server::socket::handle::{chat_shutdown, handle_connection, handle_user_message, CHAT_DATA};
 use crate::structs::UserMessage;
 use crate::utils;
-use aes_siv::Key;
-use aes_siv::{Aes256SivAead, aead::{KeyInit, OsRng, Aead}, Nonce};
+use aes_siv::{Aes256SivAead, aead::{KeyInit, OsRng}};
 use futures_util::StreamExt;
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
-use rand::{Rng, RngCore};
+use rand::Rng;
 use tokio::sync::mpsc;
 use tauri::{command, Window};
 use tokio::{net::TcpListener, sync::broadcast};
@@ -46,12 +45,14 @@ pub async fn create_chat(
     let key = Aes256SivAead::generate_key(&mut OsRng);
     let cipher = Aes256SivAead::new(&key);
 
-    *USERNAME.lock().await = username;
-    *USER_LIMIT.lock().await = user_limit;
     *CHAT_DATA.lock().await = ChatData {
         key_cipher: cipher,
         key: key.to_vec(),
+        user_limit: user_limit,
+        host_username: username,
+        peer_map: HashMap::new()
     };
+
 
     let (notify_shutdown, _) = broadcast::channel(1);
     let alphabet: [char; 36] = [
@@ -111,7 +112,6 @@ pub async fn create_chat(
                     if let Ok(Some((mut read, uid))) = handle_connection(stream).await {
                         while let Some(Ok(content)) = read.next().await {
                             if let Ok(message) = serde_json::from_str::<RecvData>(&content.to_string()) {
-                                println!("{:#?}", message);
                                 tx.send((message, uid.clone())).expect("Couldn't send message over channel");
                             }
                         }
