@@ -14,7 +14,7 @@ export default function Handle() {
     const params = useSearchParams();
     const isCreate = params.get("type") === "create";
 
-    const url_regex = new RegExp("(temp?:\/\/[a-f0-9]*_{1}[a-f0-9]*)")
+    const url_regex = new RegExp("(temp:\/\/[a-f0-9]+_[a-f0-9]+)")
     const [invalid, setInvalid] = useState(false);
     const [url, setUrl] = useState("");
 

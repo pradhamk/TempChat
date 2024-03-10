@@ -1,13 +1,12 @@
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     client::proto::{Client, SendData},
-    structs::{BroadcastMessage, EncData, Join},
+    structs::{BroadcastMessage, Join}, utils,
 };
-use aes_siv::{aead::{Aead, OsRng}, Aes256SivAead, Key, KeyInit, Nonce};
+use aes_siv::{Aes256SivAead, Key, KeyInit};
 use futures_util::{lock::Mutex, SinkExt, StreamExt};
 use once_cell::sync::Lazy;
-use rand::RngCore;
 use rsa::{pkcs1::EncodeRsaPublicKey, Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use tauri::{command, Window};
 use tokio::sync::mpsc;
@@ -26,15 +25,21 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
                     let mut client = CLIENT.lock().await;
                     if client.chat_key.is_some() {
                         let key: &Key<Aes256SivAead> = client.chat_key.as_mut().unwrap().as_slice().into();
-                        if let Ok(dec_data) = Aes256SivAead::new(key).decrypt(enc_data.nonce.as_slice().into(), enc_data.data.as_slice()) {
-                            if let Ok(broadcast_data) = serde_json::from_str::<BroadcastMessage>(&String::from_utf8(dec_data).expect("Value isn't string")) {
-                                println!("Broadcast Data: {:#?}", broadcast_data);
-                                window
-                                .emit(
-                                    "new-message",
-                                    serde_json::to_string(&broadcast_data).unwrap(),
-                                )
-                                .unwrap();
+                        let decrypted_res = utils::decrypt_message(&enc_data, &Aes256SivAead::new(key)).await;
+                        match decrypted_res {
+                            Ok(dec_data) => {
+                                if let Ok(broadcast_data) = serde_json::from_str::<BroadcastMessage>(&String::from_utf8(dec_data).expect("Value isn't string")) {
+                                    println!("Broadcast Data: {:#?}", broadcast_data);
+                                    window
+                                    .emit(
+                                        "new-message",
+                                        serde_json::to_string(&broadcast_data).unwrap(),
+                                    )
+                                    .unwrap();
+                                }
+                            },
+                            Err(err) => {
+                                //TODO: Display error to user
                             }
                         }
                     }
@@ -84,32 +89,9 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
     let priv_key = RsaPrivateKey::new(&mut rng, bits).expect("Couldn't generate user private key");
     let pub_key = RsaPublicKey::from(&priv_key);
 
-    let chat_url = chat_url.replace("temp://", "");
-    let split_url: Vec<&str> = chat_url.splitn(2, '_').collect();
-    if split_url.len() != 2 {
-        return Err("URL is in incorrect format".to_string());
-    }
-    let (hex_nonce, hex_url) = (split_url[0], split_url[1]);
+    let url = utils::parse_join_url(chat_url, password).await?;
 
-    let try_nonce = hex::decode(hex_nonce);
-    let url_res = hex::decode(hex_url);
-    if try_nonce.is_err() || url_res.is_err() {
-        return Err("Could not decode URL".to_string());
-    }
-    let nonce = try_nonce.unwrap();
-    let nonce = Nonce::from_slice(&nonce);
-    let url = url_res.unwrap();
-
-    let mut pass_vec = password.as_bytes().to_vec();
-    pass_vec.resize(64, 0);
-
-    let key: &Key<Aes256SivAead> = pass_vec.as_slice().into();
-    let cipher = Aes256SivAead::new(key);
-
-    let try_decrypt = cipher.decrypt(nonce, url.as_slice()).map_err(|_| "Incorrect password supplied".to_string())?;
-    let url = String::from_utf8(try_decrypt).map_err(|_| "Decrypted URL is not valid UTF-8".to_string())?;
-
-    let (ws_stream, _) = connect_async(url.replace("http", "ws")) //TODO: Change to https
+    let (ws_stream, _) = connect_async(url.replace("https", "wss").replace("http", "ws")) //TODO: Change to https
         .await
         .expect("Couldn't connect to chat");
     let (mut write, read) = ws_stream.split();
@@ -142,8 +124,6 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
                 return;
             }
 
-            println!("{:#?}", e.payload());
-            
             tokio::spawn(async move {
                 let mut client = CLIENT.lock().await;
 
@@ -153,15 +133,11 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
                 }
                 let key: &Key<Aes256SivAead> = try_key.unwrap().as_slice().into();
                 let cipher = Aes256SivAead::new(key);
-                let mut nonce: [u8; 16] = [0; 16];
-                OsRng.fill_bytes(&mut nonce);
-                let nonce = Nonce::from_slice(&nonce);
-                let cipher_text = cipher.encrypt(&nonce, e.payload().unwrap().as_bytes()).expect("Couldn't encrypt user message");
-
-                let send_data = serde_json::to_string(&SendData::EncData(EncData {
-                    nonce: nonce.to_vec(),
-                    data: cipher_text
-                })).expect("Couldn't convert send data to string");
+                let encrypted = utils::encrypt_message(e.payload().unwrap().into(), &cipher).await;
+                if encrypted.is_err() {
+                    //TODO: Display user error message
+                }
+                let send_data = serde_json::to_string(&SendData::EncData(encrypted.unwrap())).expect("Couldn't convert send data to string");
 
                 client
                     .write

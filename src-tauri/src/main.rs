@@ -1,6 +1,7 @@
 mod client;
 mod server;
 mod structs;
+mod utils;
 
 use self::client::client::join_chat;
 use self::server::chat::create_chat;

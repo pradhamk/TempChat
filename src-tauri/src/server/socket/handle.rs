@@ -1,11 +1,12 @@
 use crate::server::proto::{Client, Exit, RecvData, SendData, ChatData};
 use crate::structs::{BroadcastMessage, EncData, Error, Join, JoinMessage, KeyMessage, UserMessage};
+use crate::utils;
 use aes_siv::{Aes256SivAead, aead::{Aead, OsRng}, Nonce};
 use chrono::Local;
 use futures_util::stream::SplitStream;
 use futures_util::{lock::Mutex, stream::StreamExt, SinkExt};
 use once_cell::sync::Lazy;
-use rand::{Rng, RngCore};
+use rand::RngCore;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use std::{collections::HashMap, sync::Arc};
@@ -46,7 +47,7 @@ pub async fn handle_message(
     message: &RecvData,
     window: &Window,
     uid: &str,
-) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+) -> Result<(), String> {
     match message {
         RecvData::EncData(enc_data) => {
             if !registered(&uid).await {
@@ -56,17 +57,26 @@ pub async fn handle_message(
                 return Ok(());
             }
 
-            if let Ok(msg_data) = decrypt_data(enc_data).await {
-                if let Ok(message_data) = serde_json::from_str::<UserMessage>(&String::from_utf8(msg_data).unwrap()) {
-                    if message_data.content.len() > 5000 {
-                        let _ = send_err(&uid, "Message too long".into()).await;
-                        return Ok(());
+            let chat_data = CHAT_DATA.lock().await;
+            let decrypt_res = utils::decrypt_message(enc_data, &chat_data.key_cipher).await;
+            drop(chat_data);
+
+            match decrypt_res {
+                Ok(msg_data) => {
+                    if let Ok(message_data) = serde_json::from_str::<UserMessage>(&String::from_utf8(msg_data).unwrap()) {
+                        if message_data.content.len() > 5000 {
+                            let _ = send_err(&uid, "Message too long".into()).await;
+                            return Ok(());
+                        }
+                        if let Err(err) = handle_user_message(&message_data, Some(&uid), &window).await {
+                            println!("Error handling user message: {:?}", err);
+                            close_client(&uid).await;
+                            return Err(err);
+                        }
                     }
-                    if let Err(err) = handle_user_message(&message_data, Some(&uid), &window).await {
-                        println!("Error handling user message: {:?}", err);
-                        close_client(&uid).await;
-                        return Err(err);
-                    }
+                },
+                Err(err) => {
+                    return Err(err);
                 }
             }
         }
@@ -74,7 +84,7 @@ pub async fn handle_message(
             if let Err(err) = handle_join(join_data, &uid, &window).await {
                 println!("Error handling join: {:?}", err);
                 close_client(&uid).await;
-                return Err(err);
+                return Err(err.to_string());
             }
         }
         RecvData::Exit => {
@@ -98,11 +108,6 @@ pub async fn handle_message(
     Ok(())
 }
 
-async fn decrypt_data(enc_data: &EncData) -> Result<Vec<u8>, aes_siv::Error>{
-    let key_cipher = &CHAT_DATA.lock().await.key_cipher;
-    key_cipher.decrypt(enc_data.nonce.as_slice().into(), enc_data.data.as_slice())
-}
-
 async fn remove_client(uid: &str) -> Option<Client> {
     let mut clients = PEER_MAP.lock().await;
     clients.remove(uid)
@@ -110,18 +115,17 @@ async fn remove_client(uid: &str) -> Option<Client> {
 
 async fn registered(uid: &str) -> bool {
     let clients = PEER_MAP.lock().await;
-    clients.get(uid).map_or(false, |client| client.registered)
+    clients
+        .get(uid)
+        .map_or(false, |client| client.registered)
 }
 
-async fn get_joined() -> i32 {
+async fn get_joined() -> usize {
     let clients = PEER_MAP.lock().await;
-    let mut joined = 0;
-    for client in clients.values() {
-        if client.registered {
-            joined += 1;
-        }
-    }
-    joined
+    clients
+        .values()
+        .filter(|client| client.registered)
+        .count()
 }
 
 async fn get_username(uid: &str) -> String {
@@ -135,7 +139,7 @@ pub async fn handle_user_message(
     message: &UserMessage,
     uid: Option<&str>,
     window: &Window,
-) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+) -> Result<(), String> {
     let chat_data = CHAT_DATA.lock().await; 
 
     let send_data = BroadcastMessage {
@@ -148,16 +152,9 @@ pub async fn handle_user_message(
         created: Local::now().format("%H:%M:%S").to_string(),
     };
     let string_data = serde_json::to_string(&send_data).expect("Couldn't convert message to string");
+    let encrypted = utils::encrypt_message(string_data.clone(), &chat_data.key_cipher).await?;
 
-    let mut nonce: [u8; 16] = [0; 16];
-    OsRng.fill_bytes(&mut nonce);
-    let nonce = Nonce::from_slice(&nonce);
-    let cipher_text = chat_data.key_cipher.encrypt(&nonce, string_data.as_bytes()).expect("Couldn't encrypt message data");
-
-    let enc_data = serde_json::to_string(&SendData::EncData(EncData {
-        nonce: nonce.to_vec(),
-        data: cipher_text
-    })).expect("Couldn't convert encrypted message to string");
+    let enc_data = serde_json::to_string(&SendData::EncData(encrypted)).expect("Couldn't convert encrypted message to string");
 
     broadcast(&enc_data).await;
     window.emit("new-message", &string_data).unwrap();
@@ -166,13 +163,12 @@ pub async fn handle_user_message(
 
 async fn broadcast(message: &str) {
     let mut clients = PEER_MAP.lock().await;
-
     for client in clients.values_mut() {
         if !client.registered {
             continue;
         }
         if let Err(err) = client.write.send(Text(message.to_string())).await {
-            println!("Error broadcasting message: {:?}", err);
+            println!("Error broadcasting message to client: {:?}", err);
         }
     }
 }
@@ -181,12 +177,12 @@ async fn handle_join(
     join_data: &Join,
     uid: &str,
     window: &Window,
-) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+) -> Result<(), String> {
     let limit = *USER_LIMIT.lock().await;
 
     println!("Joined");
 
-    if get_joined().await + 1 > limit {
+    if get_joined().await as i32 + 1 > limit {
         if let Err(_err) = send_err(&uid, "Max joins reached".into()).await {
             close_client(&uid).await;
         }
@@ -212,9 +208,13 @@ async fn handle_join(
         }
     }
 
-    let client = clients
+    let client_res = clients
         .get_mut(uid)
-        .ok_or(tokio_tungstenite::tungstenite::Error::AlreadyClosed)?;
+        .ok_or(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
+    if client_res.is_err() {
+        return Err("Client connection already closed".into())
+    }
+    let client = client_res.unwrap();
     if client.username.len() > 15 {
         if let Err(_err) = send_err(&uid, "Username too long".into()).await {
             close_client(&uid).await;
@@ -240,11 +240,10 @@ async fn handle_join(
     }))
     .unwrap();
 
-    client.write.send(Text(key_msg)).await?;
+    let _ = client.write.send(Text(key_msg)).await;
 
     drop(clients);
     broadcast(&join_broadcast).await;
-
     window.emit("join", join_broadcast).unwrap();
 
     Ok(())
@@ -282,4 +281,5 @@ pub async fn chat_shutdown() {
         }
     }
     clients.clear();
+    //TODO: Clear everything
 }
