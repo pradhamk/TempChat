@@ -91,11 +91,14 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
     }
     let (hex_nonce, hex_url) = (split_url[0], split_url[1]);
 
-    let nonce = hex::decode(hex_nonce).map_err(|e| e.to_string())?;
+    let try_nonce = hex::decode(hex_nonce);
+    let url_res = hex::decode(hex_url);
+    if try_nonce.is_err() || url_res.is_err() {
+        return Err("Could not decode URL".to_string());
+    }
+    let nonce = try_nonce.unwrap();
     let nonce = Nonce::from_slice(&nonce);
-
-    let url_res = hex::decode(hex_url).map_err(|e| e.to_string())?;
-    let url = String::from_utf8(url_res).map_err(|e| e.to_string())?;
+    let url = url_res.unwrap();
 
     let mut pass_vec = password.as_bytes().to_vec();
     pass_vec.resize(64, 0);
@@ -103,7 +106,7 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
     let key: &Key<Aes256SivAead> = pass_vec.as_slice().into();
     let cipher = Aes256SivAead::new(key);
 
-    let try_decrypt = cipher.decrypt(nonce, url.as_bytes()).map_err(|_| "Incorrect password supplied".to_string())?;
+    let try_decrypt = cipher.decrypt(nonce, url.as_slice()).map_err(|_| "Incorrect password supplied".to_string())?;
     let url = String::from_utf8(try_decrypt).map_err(|_| "Decrypted URL is not valid UTF-8".to_string())?;
 
     let (ws_stream, _) = connect_async(url.replace("http", "ws")) //TODO: Change to https
