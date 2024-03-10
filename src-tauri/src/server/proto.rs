@@ -42,14 +42,14 @@ pub struct Exit {
 
 pub struct ChatData {
     pub key_cipher: Aes256SivAead,
-    pub key: Vec<u8>
+    pub key: Vec<u8>,
 }
 
 impl Default for ChatData {
     fn default() -> Self {
         ChatData {
             key_cipher: Aes256SivAead::new(&Aes256SivAead::generate_key(&mut OsRng)),
-            key: Vec::new()
+            key: Vec::new(),
         }
     }
 }

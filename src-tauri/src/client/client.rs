@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 
 use crate::{
     client::proto::{Client, SendData},
@@ -78,13 +78,35 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
 
 
 #[command]
-pub async fn join_chat(username: String, chat_url: String, window: Window) {
+pub async fn join_chat(username: String, chat_url: String, password: String, window: Window) -> Result<(), String> {
     let mut rng = rand::rngs::OsRng::default();
     let bits = 2048;
     let priv_key = RsaPrivateKey::new(&mut rng, bits).expect("Couldn't generate user private key");
     let pub_key = RsaPublicKey::from(&priv_key);
 
-    let (ws_stream, _) = connect_async(chat_url.replace("http", "ws"))
+    let chat_url = chat_url.replace("temp://", "");
+    let split_url: Vec<&str> = chat_url.splitn(2, '_').collect();
+    if split_url.len() != 2 {
+        return Err("URL is in incorrect format".to_string());
+    }
+    let (hex_nonce, hex_url) = (split_url[0], split_url[1]);
+
+    let nonce = hex::decode(hex_nonce).map_err(|e| e.to_string())?;
+    let nonce = Nonce::from_slice(&nonce);
+
+    let url_res = hex::decode(hex_url).map_err(|e| e.to_string())?;
+    let url = String::from_utf8(url_res).map_err(|e| e.to_string())?;
+
+    let mut pass_vec = password.as_bytes().to_vec();
+    pass_vec.resize(64, 0);
+
+    let key: &Key<Aes256SivAead> = pass_vec.as_slice().into();
+    let cipher = Aes256SivAead::new(key);
+
+    let try_decrypt = cipher.decrypt(nonce, url.as_bytes()).map_err(|_| "Incorrect password supplied".to_string())?;
+    let url = String::from_utf8(try_decrypt).map_err(|_| "Decrypted URL is not valid UTF-8".to_string())?;
+
+    let (ws_stream, _) = connect_async(url.replace("http", "ws")) //TODO: Change to https
         .await
         .expect("Couldn't connect to chat");
     let (mut write, read) = ws_stream.split();
@@ -92,7 +114,7 @@ pub async fn join_chat(username: String, chat_url: String, window: Window) {
     let join_cmd = SendData::Join(
         Join { 
             username: username,
-            pub_key: pub_key.to_pkcs1_pem(rsa::pkcs8::LineEnding::LF).expect("Couldn't serialize public key") 
+            pub_key: pub_key.to_pkcs1_pem(rsa::pkcs8::LineEnding::LF).expect("Couldn't serialize public key"), 
         }
     );
 
@@ -187,4 +209,5 @@ pub async fn join_chat(username: String, chat_url: String, window: Window) {
             _ = handle_recv_data(rx, window.clone()) => {}
         }
     });
+    Ok(())
 }

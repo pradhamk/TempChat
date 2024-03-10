@@ -113,7 +113,7 @@ export default function ChatRoom() {
                         startContent={<FaRegCopy color="purple"/>}
                         onClick={() => { navigator.clipboard.writeText(room_url) }}
                     >
-                        {room_url.split(".")[0].replace("https://", "")}
+                        Copy Join URL
                     </Button>
                 </h1>
                 <Button 

@@ -3,11 +3,13 @@ use crate::server::socket::handle::{
     chat_shutdown, handle_connection, handle_user_message, USERNAME, USER_LIMIT, CHAT_DATA
 };
 use crate::structs::UserMessage;
-use aes_siv::{Aes256SivAead, aead::{KeyInit, OsRng}};
+use aes_siv::Key;
+use aes_siv::{Aes256SivAead, aead::{KeyInit, OsRng, Aead}, Nonce};
+use bcrypt::{DEFAULT_COST, hash};
 use futures_util::StreamExt;
 use localtunnel_client::{open_tunnel, ClientConfig};
 use nanoid::nanoid;
-use rand::Rng;
+use rand::{Rng, RngCore};
 use tokio::sync::mpsc;
 use tauri::{command, Window};
 use tokio::{net::TcpListener, sync::broadcast};
@@ -30,6 +32,7 @@ async fn handle_channel_message(mut rx: mpsc::UnboundedReceiver<(RecvData, Strin
 pub async fn create_chat(
     username: String,
     user_limit: i32,
+    password: String,
     window: Window,
 ) -> Result<String, String> {
     let port = rand::thread_rng().gen_range(10_000..=20_000);
@@ -47,7 +50,7 @@ pub async fn create_chat(
     *USER_LIMIT.lock().await = user_limit;
     *CHAT_DATA.lock().await = ChatData {
         key_cipher: cipher,
-        key: key.to_vec()
+        key: key.to_vec(),
     };
 
     let (notify_shutdown, _) = broadcast::channel(1);
@@ -65,6 +68,24 @@ pub async fn create_chat(
         max_conn: user_limit.clone() as u8 + 5, //Allow more socket connections
         credential: None,
     };
+
+    let tunnel_url = format!("http://127.0.0.1:{}", port);
+    let mut pass_vec = password.as_bytes().to_vec();
+    pass_vec.resize(64, 0); //Need to pad password to 64 bits
+    let pass_key: &Key<Aes256SivAead> = pass_vec.as_slice().into();
+    let pass_cipher = Aes256SivAead::new(pass_key);
+
+    let mut nonce: [u8; 16] = [0; 16];
+    OsRng.fill_bytes(&mut nonce);
+    let nonce = Nonce::from_slice(&nonce);
+    let try_encrypted_url = pass_cipher.encrypt(&nonce, tunnel_url.as_bytes());
+
+    if try_encrypted_url.is_err() {
+        return Err("Couldn't encrypt join url".into())
+    }
+    let encrypted_url = try_encrypted_url.unwrap();
+    let hex_url = hex::encode(encrypted_url);
+    let hex_nonce = hex::encode(nonce);
 
     /*
     let tunnel_url = open_tunnel(config)
@@ -131,5 +152,5 @@ pub async fn create_chat(
         }
     });
 
-    Ok(format!("http://127.0.0.1:{}", port)) // For testing purposes
+    Ok(format!("temp://{}_{}", hex_nonce, hex_url)) // For testing purposes
 }

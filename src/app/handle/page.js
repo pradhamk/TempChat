@@ -8,12 +8,13 @@ import { invoke } from "@tauri-apps/api/tauri";
 import BackArrow from "@/components/BackArrow";
 import { useSearchParams } from "next/navigation";
 import { FaLink } from "react-icons/fa";
+import { RiLockPasswordLine } from "react-icons/ri";
 
 export default function Handle() {
     const params = useSearchParams();
     const isCreate = params.get("type") === "create";
 
-    const url_regex = new RegExp("(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})")
+    const url_regex = new RegExp("(temp?:\/\/[a-f0-9]*_{1}[a-f0-9]*)")
     const [invalid, setInvalid] = useState(false);
     const [url, setUrl] = useState("");
 
@@ -25,6 +26,9 @@ export default function Handle() {
     const [loading, setLoading] = useState(false);
     const [modalError, setModalError] = useState(false);
     const [error, setError] = useState("");
+
+    const [password, setPassword] = useState("");
+    const [passwordInvalid, setPasswordInvalid] = useState(false);
 
     useEffect(() => {
         const name = generateUsername("", 3, 15);
@@ -56,8 +60,13 @@ export default function Handle() {
     };
 
     const handleCreate = () => {
+        if(password.length === 0) {
+            setPasswordInvalid(true)
+            return
+        }
+        setPasswordInvalid(false)
         setLoading(true)
-        invoke('create_chat', { username: username, userLimit: limit }).then((url) => {
+        invoke('create_chat', { username: username, userLimit: limit, password: password }).then((url) => {
             setLoading(false);
             window.location.href = `/chat?roomURL=${url}&username=${username}&type=host`
         }).catch((err) => {
@@ -71,9 +80,14 @@ export default function Handle() {
             setInvalid(true)
             return
         }
-        setLoading(true)
         setInvalid(false)
-        invoke('join_chat', { username: username, chatUrl: url }).then((e) => {
+        if(password.length === 0) {
+            setPasswordInvalid(true)
+            return
+        }
+        setPasswordInvalid(false)
+        setLoading(true)
+        invoke('join_chat', { username: username, chatUrl: url, password: password }).then((e) => {
             setLoading(false)
             window.location.href = `/chat?roomURL=${url}&username=${username}&type=client`
         }).catch((err) => {
@@ -128,6 +142,17 @@ export default function Handle() {
                         onChange={(e) => setUrl(e.currentTarget.value)}
                     />
                 }
+                <Input  
+                    type="password"
+                    size="lg"
+                    label="Chat Password"
+                    variant="faded"
+                    description="The chat room password"
+                    className="max-w-[40vw] mt-10"
+                    startContent={<RiLockPasswordLine color="white" />}
+                    isInvalid={passwordInvalid}
+                    onChange={(e) => setPassword(e.currentTarget.value)}
+                />
                 <Button color="primary" className="mt-3 pr-10 pl-10 pt-6 pb-6 font-bold" onClick={isCreate ? handleCreate : handleJoin}>
                     {
                         loading ?
