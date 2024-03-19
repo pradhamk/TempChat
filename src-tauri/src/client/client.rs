@@ -81,6 +81,17 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
     }
 }
 
+pub async fn client_exit() {
+    let mut client = CLIENT.lock().await;
+    let _ = client
+        .write
+        .as_mut()
+        .unwrap()
+        .send(Text(serde_json::to_string(&SendData::Exit).unwrap()))
+        .await;
+    let _ = client.write.as_mut().unwrap().close().await;
+    client.write = None;
+}
 
 #[command]
 pub async fn join_chat(username: String, chat_url: String, password: String, window: Window) -> Result<(), String> {
@@ -119,11 +130,13 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
         let (tx, rx) = mpsc::unbounded_channel::<RecvData>();
         let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<bool>(); //Can't use oneshot channel due it consuming itself during a send
 
+        let window_clone = window.clone();
         let msg_handle = window.listen("host-message", move |e| {
             if e.payload().is_none() {
                 return;
             }
 
+            let error_window = window_clone.clone();
             tokio::spawn(async move {
                 let mut client = CLIENT.lock().await;
 
@@ -139,28 +152,21 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
                 }
                 let send_data = serde_json::to_string(&SendData::EncData(encrypted.unwrap())).expect("Couldn't convert send data to string");
 
-                client
+                let send_res = client
                     .write
                     .as_mut()
                     .unwrap()
                     .send(Text(send_data))
-                    .await
-                    .expect("Couldn't send host message");
+                    .await;
+                if send_res.is_err() {
+                    let _ = error_window.emit("error", "Connection closed");
+                }
             });
         });
 
         let exit_handle = window.listen("client_exit", move |_| {
             tokio::spawn(async move {
-                let mut client = CLIENT.lock().await;
-                client
-                    .write
-                    .as_mut()
-                    .unwrap()
-                    .send(Text(serde_json::to_string(&SendData::Exit).unwrap()))
-                    .await
-                    .expect("Couldn't send host message");
-                let _ = client.write.as_mut().unwrap().close().await;
-                client.write = None;
+                client_exit().await;
             });
             let _ = shutdown_tx.send(true);
         });

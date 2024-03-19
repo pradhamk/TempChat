@@ -123,6 +123,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tracing",
+ "url",
  "uuid",
 ]
 

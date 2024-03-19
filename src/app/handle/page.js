@@ -75,7 +75,7 @@ export default function Handle() {
         });
     };
 
-    const handleJoin = () => { //TODO: Check for custom join URL schema
+    const handleJoin = () => {
         if(url.length === 0 || url.includes(" ") || !url_regex.test(url)) {
             setInvalid(true)
             return

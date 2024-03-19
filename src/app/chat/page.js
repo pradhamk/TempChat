@@ -10,7 +10,6 @@ import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import JoinLeave from "@/components/JoinLeave";
-import { invoke } from "@tauri-apps/api/tauri";
 
 export default function ChatRoom() {
     const search = useSearchParams()
@@ -21,6 +20,9 @@ export default function ChatRoom() {
     const [message, setMessage] = useState("")
     const [messages, setMessages] = useState([])
     const [isShutdown, setShutdown] = useState(false)
+    const [errorModal, setErrorModal] = useState(false)
+    const [errorContent, setErrorContent] = useState("")
+
     const msgRef = useRef(null)
 
     function sendMessage(e) {
@@ -32,7 +34,7 @@ export default function ChatRoom() {
             .then(() => {
                 setMessage("")
             }).catch((e) => {
-                console.log("Couldn't send message", e)
+                console.log(e)
             })  
     }
 
@@ -70,7 +72,8 @@ export default function ChatRoom() {
         })
 
         const error_unlisten = listen('error', (e) => {
-            console.log("error", e.payload)
+            setErrorContent(e.payload)
+            setErrorModal(true)
         })
 
         const shutdown_unlisten = listen('shutdown', (e) => {
@@ -83,14 +86,6 @@ export default function ChatRoom() {
             const content = JSON.parse(e.payload)
             setMessages((prev) => [...prev, { exit: content}])
         })  
-
-        import('@tauri-apps/api/window').then((w) => {
-            w.getCurrent().onCloseRequested(async (e) => {
-                e.preventDefault()
-                leaveSession(true)
-                invoke('exit_app')
-            })    
-        });
 
         return () => {
             message_unlisten.then(f => f())
@@ -180,6 +175,30 @@ export default function ChatRoom() {
                             color="primary" 
                             onPress={() => {
                                 setShutdown(false)
+                                window.location.href = "/"
+                            }}
+                        >
+                            Continue
+                        </Button>
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
+            <Modal
+                isOpen={errorModal}
+                isDismissable={false}
+            >
+                <ModalContent>
+                    <ModalHeader>An Error Occurred</ModalHeader>
+                    <ModalBody>
+                        {errorContent}
+                        <p>You will be exited out of the session</p>
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button 
+                            color="primary" 
+                            onPress={() => {
+                                leaveSession(false)
+                                setErrorModal(false)
                                 window.location.href = "/"
                             }}
                         >

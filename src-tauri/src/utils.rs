@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use aes_siv::{aead::{Aead, OsRng}, Aes256SivAead, Key, KeyInit, Nonce};
 use rand::RngCore;
+use tauri::GlobalWindowEvent;
 
-use crate::structs::EncData;
+use crate::{client::client::client_exit, server::socket::handle::chat_shutdown, structs::EncData};
 
 async fn generate_nonce() -> Nonce {
     let mut nonce: [u8; 16] = [0; 16];
@@ -96,3 +99,18 @@ pub async fn encrypt_message(message: String, cipher: &Aes256SivAead) -> Result<
     }
 }
 
+pub fn handle_exit(event: GlobalWindowEvent) {
+    let url = event.window().url();
+    match url.path() {
+        "/chat" => {
+            let queries: HashMap<String, String> = url.query_pairs().into_owned().collect();
+            let is_host = queries.get("type").is_some_and(|val| val == "host");
+            if is_host {
+                tauri::async_runtime::block_on(chat_shutdown());
+            } else {
+                tauri::async_runtime::block_on(client_exit());
+            };
+        },
+        _ => {}
+    }
+}
