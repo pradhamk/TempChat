@@ -10,7 +10,6 @@ use self::server::chat::create_chat;
 
 #[tauri::command]
 fn exit_app() {
-    println!("Invoked");
     std::process::exit(0);
 }
 

@@ -10,6 +10,7 @@ import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import JoinLeave from "@/components/JoinLeave";
+import { FaCheck } from "react-icons/fa6";
 
 export default function ChatRoom() {
     const search = useSearchParams()
@@ -22,6 +23,7 @@ export default function ChatRoom() {
     const [isShutdown, setShutdown] = useState(false)
     const [errorModal, setErrorModal] = useState(false)
     const [errorContent, setErrorContent] = useState("")
+    const [copied, setCopied] = useState(false)
 
     const msgRef = useRef(null)
 
@@ -50,6 +52,12 @@ export default function ChatRoom() {
                     window.location.href = '/'
                 }
             })
+    }
+
+    function copyUrl() {
+        setCopied(true)
+        navigator.clipboard.writeText(room_url)
+        setTimeout(() => { setCopied(false) }, 1500)
     }
 
     useEffect(() => {
@@ -104,10 +112,10 @@ export default function ChatRoom() {
                         color="primary" 
                         variant="flat" 
                         className="ml-3 text-white" 
-                        startContent={<FaRegCopy color="purple"/>}
-                        onClick={() => { navigator.clipboard.writeText(room_url) }}
+                        startContent={copied ? <></> : <FaRegCopy color="purple"/>}
+                        onClick={copyUrl}
                     >
-                        Copy Join URL
+                        {copied ? <FaCheck color="purple"/> : "Copy Join URL"}
                     </Button>
                 </h1>
                 <Button 
