@@ -279,5 +279,7 @@ pub async fn chat_shutdown() {
         }
     }
     clients.clear();
-    //TODO: Clear everything
+    chat_data.host_username.clear();
+    chat_data.key.clear();
+    chat_data.user_limit = 0;
 }

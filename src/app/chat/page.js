@@ -10,7 +10,7 @@ import ChatBubble from "@/components/ChatBubble";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import JoinLeave from "@/components/JoinLeave";
-import { exit } from "@tauri-apps/api/process";
+import { invoke } from "@tauri-apps/api/tauri";
 
 export default function ChatRoom() {
     const search = useSearchParams()
@@ -80,16 +80,15 @@ export default function ChatRoom() {
         })
 
         const exit_unlisten = listen('client_exit', (e) => {
-            console.log(e.payload)
             const content = JSON.parse(e.payload)
-            console.log(content)
             setMessages((prev) => [...prev, { exit: content}])
         })  
 
         import('@tauri-apps/api/window').then((w) => {
             w.getCurrent().onCloseRequested(async (e) => {
+                e.preventDefault()
                 leaveSession(true)
-                await exit(1)
+                invoke('exit_app')
             })    
         });
 
