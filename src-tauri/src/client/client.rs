@@ -39,7 +39,7 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
                                 }
                             },
                             Err(err) => {
-                                //TODO: Display error to user
+                                send_err(&window, err).await;
                             }
                         }
                     }
@@ -56,11 +56,14 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
                     let enc_key = msg.key;
                     let mut client = CLIENT.lock().await;
                     let dec_data = client.priv_key.as_mut().unwrap().decrypt(Pkcs1v15Encrypt, &enc_key);
-                    if dec_data.is_err() {
-                        //TODO: Display error to user
+                    match dec_data {
+                        Ok(chat_key) => {
+                            client.chat_key = Some(chat_key);
+                        },
+                        Err(e) => {
+                            send_err(&window, e.to_string()).await;
+                        }
                     }
-                    let chat_key = dec_data.unwrap();
-                    client.chat_key = Some(chat_key);
                 }
                 RecvData::Error(err) => {
                     window
@@ -93,6 +96,10 @@ pub async fn client_exit() {
     client.write = None;
 }
 
+async fn send_err(window: &Window, err: String) {
+    window.emit("error", err).expect("Couldn't emit error");
+}
+
 #[command]
 pub async fn join_chat(username: String, chat_url: String, password: String, window: Window) -> Result<(), String> {
     let mut rng = rand::rngs::OsRng::default();
@@ -102,7 +109,7 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
 
     let url = utils::parse_join_url(chat_url, password).await?;
 
-    let (ws_stream, _) = connect_async(url.replace("https", "wss").replace("http", "ws")) //TODO: Change to https
+    let (ws_stream, _) = connect_async(url.replace("https", "wss").replace("http", "ws"))
         .await
         .expect("Couldn't connect to chat");
     let (mut write, read) = ws_stream.split();
@@ -142,13 +149,13 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
 
                 let try_key = client.chat_key.as_mut();
                 if try_key.is_none() {
-                    //TODO: Display user error message
+                    send_err(&error_window, "Server chat key not found".into()).await;
                 }
                 let key: &Key<Aes256SivAead> = try_key.unwrap().as_slice().into();
                 let cipher = Aes256SivAead::new(key);
                 let encrypted = utils::encrypt_message(e.payload().unwrap().into(), &cipher).await;
                 if encrypted.is_err() {
-                    //TODO: Display user error message
+                    send_err(&error_window, "Couldn't encrypt user message".into()).await;
                 }
                 let send_data = serde_json::to_string(&SendData::EncData(encrypted.unwrap())).expect("Couldn't convert send data to string");
 
