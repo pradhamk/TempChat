@@ -11,6 +11,7 @@ import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import JoinLeave from "@/components/JoinLeave";
 import { FaCheck } from "react-icons/fa6";
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 
 export default function ChatRoom() {
     const search = useSearchParams()
@@ -60,6 +61,15 @@ export default function ChatRoom() {
         setTimeout(() => { setCopied(false) }, 1500)
     }
 
+    async function hasPermission() {
+        const granted = await isPermissionGranted()
+        if(!granted) {
+            const permission = await requestPermission()
+            return permission === 'granted';
+        }
+        return granted
+    }
+
     useEffect(() => {
         if(msgRef.current) {
             msgRef.current.scrollTop = msgRef.current.scrollHeight;
@@ -70,8 +80,12 @@ export default function ChatRoom() {
         if(!window) { return }
         const message_unlisten = listen('new-message', (e) => {
             const content = JSON.parse(e.payload)
-            console.log(content)
             setMessages((prev) => [...prev, content])
+            hasPermission().then((permission) => {
+                if(permission && !window.document.hasFocus()) {
+                    sendNotification("New message")
+                }
+            })
         })
 
         const join_unlisten = listen('join', (e) => {

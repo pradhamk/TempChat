@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     client::proto::{Client, SendData},
-    structs::{BroadcastMessage, Join}, utils,
+    structs::{BroadcastMessage, Join},
+    utils,
 };
 use aes_siv::{Aes256SivAead, Key, KeyInit};
 use futures_util::{lock::Mutex, SinkExt, StreamExt};
@@ -24,20 +25,23 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
                 RecvData::EncData(enc_data) => {
                     let mut client = CLIENT.lock().await;
                     if client.chat_key.is_some() {
-                        let key: &Key<Aes256SivAead> = client.chat_key.as_mut().unwrap().as_slice().into();
-                        let decrypted_res = utils::decrypt_message(&enc_data, &Aes256SivAead::new(key)).await;
+                        let key: &Key<Aes256SivAead> =
+                            client.chat_key.as_mut().unwrap().as_slice().into();
+                        let decrypted_res =
+                            utils::decrypt_message(&enc_data, &Aes256SivAead::new(key)).await;
                         match decrypted_res {
                             Ok(dec_data) => {
-                                if let Ok(broadcast_data) = serde_json::from_str::<BroadcastMessage>(&String::from_utf8(dec_data).expect("Value isn't string")) {
-                                    println!("Broadcast Data: {:#?}", broadcast_data);
+                                if let Ok(broadcast_data) = serde_json::from_str::<BroadcastMessage>(
+                                    &String::from_utf8(dec_data).expect("Value isn't string"),
+                                ) {
                                     window
-                                    .emit(
-                                        "new-message",
-                                        serde_json::to_string(&broadcast_data).unwrap(),
-                                    )
-                                    .unwrap();
+                                        .emit(
+                                            "new-message",
+                                            serde_json::to_string(&broadcast_data).unwrap(),
+                                        )
+                                        .unwrap();
                                 }
-                            },
+                            }
                             Err(err) => {
                                 send_err(&window, err).await;
                             }
@@ -55,11 +59,15 @@ async fn handle_recv_data(mut rx: mpsc::UnboundedReceiver<RecvData>, window: Win
                 RecvData::KeyMessage(msg) => {
                     let enc_key = msg.key;
                     let mut client = CLIENT.lock().await;
-                    let dec_data = client.priv_key.as_mut().unwrap().decrypt(Pkcs1v15Encrypt, &enc_key);
+                    let dec_data = client
+                        .priv_key
+                        .as_mut()
+                        .unwrap()
+                        .decrypt(Pkcs1v15Encrypt, &enc_key);
                     match dec_data {
                         Ok(chat_key) => {
                             client.chat_key = Some(chat_key);
-                        },
+                        }
                         Err(e) => {
                             send_err(&window, e.to_string()).await;
                         }
@@ -101,7 +109,12 @@ async fn send_err(window: &Window, err: String) {
 }
 
 #[command]
-pub async fn join_chat(username: String, chat_url: String, password: String, window: Window) -> Result<(), String> {
+pub async fn join_chat(
+    username: String,
+    chat_url: String,
+    password: String,
+    window: Window,
+) -> Result<(), String> {
     let mut rng = rand::rngs::OsRng::default();
     let bits = 2048;
     let priv_key = RsaPrivateKey::new(&mut rng, bits).expect("Couldn't generate user private key");
@@ -114,12 +127,12 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
         .expect("Couldn't connect to chat");
     let (mut write, read) = ws_stream.split();
 
-    let join_cmd = SendData::Join(
-        Join { 
-            username: username,
-            pub_key: pub_key.to_pkcs1_pem(rsa::pkcs8::LineEnding::LF).expect("Couldn't serialize public key"), 
-        }
-    );
+    let join_cmd = SendData::Join(Join {
+        username: username,
+        pub_key: pub_key
+            .to_pkcs1_pem(rsa::pkcs8::LineEnding::LF)
+            .expect("Couldn't serialize public key"),
+    });
 
     write
         .send(Text(serde_json::to_string(&join_cmd).unwrap()))
@@ -130,7 +143,7 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
         write: Some(write),
         pub_key: Some(pub_key),
         priv_key: Some(priv_key),
-        chat_key: None
+        chat_key: None,
     };
 
     tokio::spawn(async move {
@@ -157,14 +170,10 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
                 if encrypted.is_err() {
                     send_err(&error_window, "Couldn't encrypt user message".into()).await;
                 }
-                let send_data = serde_json::to_string(&SendData::EncData(encrypted.unwrap())).expect("Couldn't convert send data to string");
+                let send_data = serde_json::to_string(&SendData::EncData(encrypted.unwrap()))
+                    .expect("Couldn't convert send data to string");
 
-                let send_res = client
-                    .write
-                    .as_mut()
-                    .unwrap()
-                    .send(Text(send_data))
-                    .await;
+                let send_res = client.write.as_mut().unwrap().send(Text(send_data)).await;
                 if send_res.is_err() {
                     let _ = error_window.emit("error", "Connection closed");
                 }
@@ -181,7 +190,6 @@ pub async fn join_chat(username: String, chat_url: String, password: String, win
         let read_handle = tokio::spawn(async move {
             read.for_each(|message_res| async {
                 if let Ok(message) = message_res {
-                    println!("{}", message);
                     let parsed = serde_json::from_str::<RecvData>(&message.to_string());
                     if let Ok(recv_data) = parsed {
                         tx.send(recv_data).expect("Couldn't send recieve data");

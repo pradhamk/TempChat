@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::structs::{EncData, Error, Join, JoinMessage, KeyMessage};
-use aes_siv::{Aes256SivAead, aead::KeyInit};
+use aes_siv::{aead::KeyInit, Aes256SivAead};
 use futures_util::stream::SplitSink;
 use rand::rngs::OsRng;
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -16,7 +16,7 @@ pub struct Client {
     pub write: SplitSink<WebSocketStream<TcpStream>, Message>,
     pub registered: bool,
     pub pub_key: Option<RsaPublicKey>,
-    pub priv_key: Option<RsaPrivateKey>
+    pub priv_key: Option<RsaPrivateKey>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -26,7 +26,7 @@ pub enum SendData {
     Shutdown,
     JoinMessage(JoinMessage),
     KeyMessage(KeyMessage),
-    EncData(EncData)
+    EncData(EncData),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,7 +57,7 @@ impl Default for ChatData {
             key: Vec::new(),
             peer_map: HashMap::new(),
             user_limit: 2,
-            host_username: String::new()
+            host_username: String::new(),
         }
     }
 }

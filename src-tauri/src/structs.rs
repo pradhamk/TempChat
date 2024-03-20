@@ -36,5 +36,5 @@ pub struct KeyMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EncData {
     pub nonce: Vec<u8>,
-    pub data: Vec<u8>
+    pub data: Vec<u8>,
 }
